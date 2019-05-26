@@ -1,0 +1,127 @@
+# Titan
+
+Titan is an experimental type checker implementation written in Haskell.
+
+## Features
+
+This implementation is based on the implementation of [Typing Haskell in Haskell](https://web.cecs.pdx.edu/~mpj/thih/) type checker. I'm going to implement some additional features like:
+
+* [x] Parsers and (poor) pretty-printers
+* [x] Implicit universal quantification
+* [x] Kind inference
+* [x] Explicit kind signatures and scoped type variables
+* [x] Multi-parameter type classes
+* [ ] Pattern exhaustiveness/useless checker
+* [ ] Functional dependencies
+* [ ] Row polymorphism
+* [ ] Effects
+
+## Syntax overview
+
+### Comments
+```
+// comment
+/* comment */
+```
+
+### Kinds
+```
+_a            // var (internal)
+Type          // types of values
+Constraint    // constraints
+k -> k        // function kind
+```
+
+### Types
+```
+_a            // var (internal)
+Int           // con
+Pair a b      // app
+a -> b        // app (arrow)
+a             // quantified var
+```
+
+### Constraints
+```
+Coercible a b // class consraints
+(c, c)        // set of constraints
+```
+
+### Type schemes
+```
+// type variables are implicitly quantified
+a -> f a where Applicative f
+
+// specifying quantification explicitly
+[a f] a -> f a where Applicative f
+
+// specifying quantification with kind signatures
+[(a : Type) (f : Type -> Type)] a -> f a where Applicative f
+```
+
+### Literals
+```
+123           // integer
+'a'           // char
+3.14          // float
+"hello"       // string
+```
+
+### Patterns
+```
+x             // var
+x@p           // as var
+_             // wildcard
+Pair a b      // decon
+123           // lit
+```
+
+### Expressions
+```
+x             // var
+Pair          // con
+Pair a b      // app
+123           // lit
+let id = e, id = e in e    // let
+fun pats -> e | pats -> e  // lam
+```
+
+### Declarations
+```
+// explicitly typed def
+val id : ts
+val id : ts = e
+
+// implicitly typed def
+val id = e
+
+// data type
+data List a {
+  con Cons a (List a)
+  con Nil
+}
+
+// type class
+class Eq a {
+  val eq : a -> a -> Bool
+}
+
+class Ord a where Eq a {
+  val compare : a -> a -> Ordering
+}
+
+// instance
+instance Eq (Pair a b) where (Eq a, Eq b)
+
+// default
+default {
+  Maybe
+  Integer
+}
+```
+
+## References
+
+- [Mark P Jones: Typing Haskell in Haskell](https://web.cecs.pdx.edu/~mpj/thih/)
+- [Didier Rémy: Extension of ML type system with a sorted equational theory on types](https://hal.inria.fr/inria-00077006/document)
+

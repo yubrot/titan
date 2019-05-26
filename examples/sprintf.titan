@@ -1,0 +1,12 @@
+// http://pllab.is.ocha.ac.jp/~asai/papers/contfest08slide.pdf
+val int : Integer -> List Char
+val str : List Char -> List Char
+
+val sprintf = fun pat -> pat id
+val lit = fun str k -> k str
+val cat = fun p1 p2 k -> p1 (fun x -> p2 (fun y -> k (append x y)))
+val req = fun f k z -> k (f z)
+
+val test : Integer -> Integer -> List Char =
+  let template = cat (cat (cat (cat (req int) (lit " + ")) (req int)) (lit " = ")) (req int) in
+  fun a b -> sprintf template a b (add a b)

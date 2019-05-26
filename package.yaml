@@ -1,0 +1,89 @@
+name:                titan
+version:             0.1.0.0
+github:              "yubrot/titan"
+license:             BSD3
+author:              "yubrot"
+maintainer:          "yubrot@gmail.com"
+copyright:           "2019 yubrot"
+
+extra-source-files:
+- README.md
+
+data-files:
+- std/*.titan
+
+description:         Please see the README on GitHub at <https://github.com/yubrot/titan#readme>
+
+ghc-options:
+- -Werror
+- -Wall
+- -Wcompat
+- -Wincomplete-record-updates
+- -Wincomplete-uni-patterns
+- -Wredundant-constraints
+- -fno-warn-type-defaults
+- -fno-warn-name-shadowing
+
+default-extensions:
+- ConstraintKinds
+- DefaultSignatures
+- DeriveDataTypeable
+- DeriveFoldable
+- DeriveFunctor
+- DeriveTraversable
+- DuplicateRecordFields
+- EmptyCase
+- FlexibleContexts
+- FlexibleInstances
+- FunctionalDependencies
+- LambdaCase
+- MultiParamTypeClasses
+- MultiWayIf
+- NamedFieldPuns
+- NoImplicitPrelude
+- PatternSynonyms
+- RankNTypes
+- ScopedTypeVariables
+- TemplateHaskell
+- TypeApplications
+- TypeFamilies
+- ViewPatterns
+
+dependencies:
+- base >= 4.7 && < 5
+- containers
+- mtl
+- lens
+
+library:
+  source-dirs: src
+  other-modules:
+  - Paths_titan
+  dependencies:
+  - megaparsec
+  - parser-combinators
+  - filepath
+  - directory
+
+executables:
+  titan:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - titan
+
+tests:
+  titan-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - titan
+    - hspec

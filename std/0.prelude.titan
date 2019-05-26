@@ -1,0 +1,286 @@
+data Bool {
+  con True
+  con False
+}
+
+val if : Bool -> a -> a -> a = fun
+  | True then _ -> then
+  | False _ else -> else
+
+val and : Bool -> Bool -> Bool = fun
+  | True True -> True
+  | _ _ -> False
+
+val or : Bool -> Bool -> Bool = fun
+  | False False -> False
+  | _ _ -> True
+
+val not : Bool -> Bool = fun
+  | True -> False
+  | False -> True
+
+data Maybe a {
+  con Nothing
+  con Just a
+}
+
+val maybe : b -> (a -> b) -> Maybe a -> b = fun
+  | n _ Nothing -> n
+  | _ f (Just x) -> f x
+
+data Either a b {
+  con Left a
+  con Right b
+}
+
+val either : (a -> c) -> (b -> c) -> Either a b -> c = fun
+  | f _ (Left l) -> f l
+  | _ g (Right r) -> g r
+
+data Ordering {
+  con LT
+  con EQ
+  con GT
+}
+
+data Char
+
+data Pair a b {
+  con Pair a b
+}
+
+val fst : Pair a b -> a = fun (Pair x _) -> x
+
+val snd : Pair a b -> b = fun (Pair _ y) -> y
+
+val curry : (Pair a b -> c) -> a -> b -> c = fun f x y -> f (Pair x y)
+
+val uncurry : (a -> b -> c) -> Pair a b -> c = fun f p -> f (fst p) (snd p)
+
+class Eq a {
+  val eq : a -> a -> Bool = fun x y -> not (ne x y)
+  val ne : a -> a -> Bool = fun x y -> not (eq x y)
+}
+
+instance Eq Bool
+instance Eq (Maybe a) where Eq a
+instance Eq (Either a b) where (Eq a, Eq b)
+instance Eq Ordering
+instance Eq Char
+instance Eq (Pair a b) where (Eq a, Eq b)
+instance Eq Int
+instance Eq Word
+instance Eq Integer
+instance Eq Float
+instance Eq Double
+instance Eq (List a) where Eq a
+
+class Ord a where Eq a {
+  val compare : a -> a -> Ordering
+  val lt : a -> a -> Bool = fun x y -> eq (compare x y) LT
+  val le : a -> a -> Bool = fun x y -> ne (compare x y) GT
+  val gt : a -> a -> Bool = fun x y -> eq (compare x y) GT
+  val ge : a -> a -> Bool = fun x y -> ne (compare x y) LT
+  val max : a -> a -> a = fun x y -> if (le x y) y x
+  val min : a -> a -> a = fun x y -> if (le x y) x y
+}
+
+instance Ord Bool
+instance Ord (Maybe a) where Ord a
+instance Ord (Either a b) where (Ord a, Ord b)
+instance Ord Ordering
+instance Ord Char
+instance Ord (Pair a b) where (Ord a, Ord b)
+instance Ord Int
+instance Ord Word
+instance Ord Integer
+instance Ord Float
+instance Ord Double
+instance Ord (List a) where Ord a
+
+data Int
+data Word
+data Integer
+data Float
+data Double
+
+class Num a {
+  val add : a -> a -> a
+  val sub : a -> a -> a
+  val mul : a -> a -> a
+  val negate : a -> a
+  val abs : a -> a
+  val signum : a -> a
+  val fromInteger : Integer -> a
+}
+
+instance Num Int
+instance Num Word
+instance Num Integer
+instance Num Float
+instance Num Double
+
+class Fractional a where Num a {
+  val fdiv : a -> a -> a
+  val recip : a -> a
+}
+
+instance Fractional Float
+instance Fractional Double
+
+class Semigroup a {
+  val assoc : a -> a -> a
+}
+
+class Monoid a where Semigroup a {
+  val mempty : a
+  val mappend : a -> a -> a = assoc
+  val mconcat : List a -> a = foldr mappend mempty
+}
+
+instance Semigroup (Maybe a) where Semigroup a
+instance Semigroup (Either a b) where (Semigroup a, Semigroup b)
+instance Semigroup Ordering
+instance Semigroup (Pair a b) where (Semigroup a, Semigroup b)
+instance Semigroup (List a)
+
+class Functor f {
+  val fmap : (a -> b) -> f a -> f b
+}
+
+instance Functor Maybe
+instance Functor (Either a)
+instance Functor (Pair a)
+instance Functor List
+
+class Applicative f where Functor f {
+  val pure : a -> f a
+  val ap : f (a -> b) -> f a -> f b
+}
+
+instance Applicative Maybe
+instance Applicative (Either e)
+instance Applicative (Pair a) where Monoid a
+instance Applicative List
+
+class Monad m where Applicative m {
+  val return : a -> m a = pure
+  val bind : m a -> (a -> m b) -> m b
+  val fail : m a
+}
+
+instance Monad Maybe
+instance Monad (Either e)
+instance Monad (Pair a) where Monoid a
+instance Monad List
+
+class Foldable t {
+  val foldMap : (a -> m) -> t a -> m where Monoid m = fun f -> foldr (compose mappend f) mempty
+  val foldr : (a -> b -> b) -> b -> t a -> b
+  val foldl : (b -> a -> b) -> b -> t a -> b
+  val elem : a -> t a -> Bool where Eq a = compose any eq
+  val maximum : t a -> a where Ord a
+  val minimum : t a -> a where Ord a
+  val sum : t a -> a where Num a
+  val product : t a -> a where Num a
+}
+
+instance Foldable Maybe
+instance Foldable (Either a)
+instance Foldable (Pair a)
+instance Foldable List
+
+class Traversable t where (Functor t, Foldable t) {
+  val traverse : (a -> f b) -> t a -> f (t b) where Applicative f
+  val sequence : t (f a) -> f (t a) where Applicative f
+}
+
+instance Traversable Maybe
+instance Traversable (Either a)
+instance Traversable (Pair a)
+instance Traversable List
+
+val id : a -> a = fun x -> x
+
+val const : a -> b -> a = fun x _ -> x
+
+val compose : (b -> c) -> (a -> b) -> a -> c = fun f g x -> f (g x)
+
+val flip : (a -> b -> c) -> b -> a -> c = fun f a b -> f b a
+
+val undefined : a
+
+data List a {
+  con Nil
+  con Cons a (List a)
+}
+
+val map : (a -> b) -> List a -> List b = fun
+  | _ Nil -> Nil
+  | f (Cons x xs) -> Cons (f x) (map f xs)
+
+val append : List a -> List a -> List a = fun
+  | Nil xss -> xss
+  | (Cons x xs) xss -> Cons x (append xs xss)
+
+val filter : (a -> Bool) -> List a -> List a = fun
+  | _ Nil -> Nil
+  | f (Cons x xs) -> if (f x) (Cons x (filter f xs)) (filter f xs)
+
+val head : List a -> a
+
+val last : List a -> a
+
+val tail : List a -> List a
+
+val init : List a -> List a
+
+val reverse : List a -> List a
+
+val iterate : (a -> a) -> a -> List a
+
+val repeat : a -> List a
+
+val null : t a -> Bool where Foldable t
+
+val length : t a -> Int where Foldable t
+
+val any : (a -> Bool) -> t a -> Bool where Foldable t =
+  fun f -> foldr (fun a b -> or (f a) b) False
+
+val all : (a -> Bool) -> t a -> Bool where Foldable t =
+  fun f -> foldr (fun a b -> and (f a) b) True
+
+val concat : t (List a) -> List a where Foldable t
+
+val take : Int -> List a -> List a
+
+val drop : Int -> List a -> List a
+
+val splitAt : Int -> List a -> Pair (List a) (List a)
+
+val takeWhile : (a -> Bool) -> List a -> List a
+
+val dropWhile : (a -> Bool) -> List a -> List a
+
+val span : (a -> Bool) -> List a -> Pair (List a) (List a)
+
+val break : (a -> Bool) -> List a -> Pair (List a) (List a)
+
+val lookup : a -> List (Pair a b) -> Maybe b where Eq a = fun
+  | _ Nil -> Nothing
+  | key (Cons (Pair x y) xys) -> if (eq key x) (Just y) (lookup key xys)
+
+val zip : List a -> List b -> List (Pair a b) = zipWith Pair
+
+val zipWith : (a -> b -> c) -> List a -> List b -> List c = fun
+  | f (Cons a as) (Cons b bs) -> Cons (f a b) (zipWith f as bs)
+  | _ _ _ -> Nil
+
+val unzip : List (Pair a b) -> Pair (List a) (List b) =
+  foldr (fun (Pair a b) (Pair as bs) -> Pair (Cons a as) (Cons b bs)) (Pair Nil Nil)
+
+default {
+  Integer
+  Double
+}
