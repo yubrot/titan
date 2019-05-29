@@ -15,6 +15,7 @@ data Error
   | CannotResolve Name
   | CannotUnifyKind Kind Kind UnifyFailReason
   | CannotUnifyType Type Type UnifyFailReason
+  | ArityMismatch Arity Arity
   | MatchFailed
   | CyclicClasses [Name]
   | OverlappingInstances Instance Instance
@@ -37,6 +38,7 @@ instance Show Error where
     CannotResolve s -> "Cannot resolve " ++ s
     CannotUnifyKind a b reason -> "Cannot unify kind " ++ pprint a ++ " with " ++ pprint b ++ show reason
     CannotUnifyType a b reason -> "Cannot unify type " ++ pprint a ++ " with " ++ pprint b ++ show reason
+    ArityMismatch expected actual -> "Arity mismatch: expected " ++ show expected ++ " arguments but got " ++ show actual
     MatchFailed -> "Cannot match type"
     CyclicClasses classes -> "Cyclic classes: " ++ foldr1 (\a b -> a ++ ", " ++ b) classes
     OverlappingInstances a b -> "Overlapping instances: " ++ pprint a ++ " and " ++ pprint b

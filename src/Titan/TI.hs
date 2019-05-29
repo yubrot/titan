@@ -78,11 +78,10 @@ tiPattern ty = \case
   PWildcard ->
     return PWildcard
   PDecon vc ps -> do
-    -- FIXME: arity check required (partial application is diallowed)
     cty <- newTVar KType
     ptys <- mapM (\_ -> newTVar KType) ps
     unify (foldr (-->) ty ptys) cty
-    PDecon <$> tiUse cty vc <*> zipWithM tiPattern ptys ps
+    PDecon <$> tiValueCon (length ps) cty vc <*> zipWithM tiPattern ptys ps
   PLit l -> do
     PLit <$> tiLiteral ty l
 
@@ -103,11 +102,14 @@ tiExpr ty = \case
     binds <- scopedLevel $ tiBindGroup binds
     e <- scoped binds $ tiExpr ty e
     return $ ELet binds e
-  ELam alts ->
-    ELam <$> mapM (tiAlt ty) alts
+  ELam alts -> do
+    let arity = alts^.to NonEmpty.head.patterns.to length
+    alts <- mapM (tiAlt arity ty) alts
+    return $ ELam alts
 
-tiAlt :: TI m => Type -> Alt -> m Alt
-tiAlt ty (ps :-> e) = do
+tiAlt :: TI m => Arity -> Type -> Alt -> m Alt
+tiAlt arity ty (ps :-> e) = do
+  when (length ps /= arity) $ throwError $ ArityMismatch arity (length ps)
   defs <- forM (ps^..biplate) $ \(def :: PatternDef) -> do
     ty <- newTVar KType
     return (def, ty)
@@ -116,6 +118,14 @@ tiAlt ty (ps :-> e) = do
     ptys <- mapM (\_ -> newTVar KType) ps
     unify (foldr (-->) ety ptys) ty
     (:->) <$> sequence (NonEmpty.zipWith tiPattern ptys ps) <*> tiExpr ety e
+
+tiValueCon :: TI m => Arity -> Type -> ValueCon -> m ValueCon
+tiValueCon arity ty = \case
+  ValueConData id -> do
+    id <- tiUse ty id
+    v <- resolveUse' id
+    when (length (v^.fields) /= arity) $ throwError $ ArityMismatch (length (v^.fields)) arity
+    return $ ValueConData id
 
 tiExpl :: TI m => (Scheme, Maybe Expr) -> m (Maybe Expr)
 tiExpl (scheme, e) = splitInferCtx $ case e of
