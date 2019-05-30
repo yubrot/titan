@@ -15,11 +15,14 @@ data Error
   | CannotResolve Name
   | CannotUnifyKind Kind Kind UnifyFailReason
   | CannotUnifyType Type Type UnifyFailReason
+  | ArityMismatch Arity Arity
   | MatchFailed
   | CyclicClasses [Name]
   | OverlappingInstances Instance Instance
   | NoMatchingInstances [Constraint] Constraint
   | CannotResolveAmbiguity Name [Constraint]
+  | UselessPattern String
+  | NonExhaustivePattern [String]
   deriving (Eq, Ord, Data, Typeable)
 
 data UnifyFailReason
@@ -37,11 +40,14 @@ instance Show Error where
     CannotResolve s -> "Cannot resolve " ++ s
     CannotUnifyKind a b reason -> "Cannot unify kind " ++ pprint a ++ " with " ++ pprint b ++ show reason
     CannotUnifyType a b reason -> "Cannot unify type " ++ pprint a ++ " with " ++ pprint b ++ show reason
+    ArityMismatch expected actual -> "Arity mismatch: expected " ++ show expected ++ " arguments but got " ++ show actual
     MatchFailed -> "Cannot match type"
     CyclicClasses classes -> "Cyclic classes: " ++ foldr1 (\a b -> a ++ ", " ++ b) classes
     OverlappingInstances a b -> "Overlapping instances: " ++ pprint a ++ " and " ++ pprint b
     NoMatchingInstances ps p -> "No matching instances for " ++ pprint p ++ pprint (PrettyContext ps)
     CannotResolveAmbiguity a ps -> "Cannot resolve ambiguity for " ++ a ++ pprint (PrettyContext ps)
+    UselessPattern p -> "Useless pattern: " ++ p
+    NonExhaustivePattern ps -> "Non exhaustive pattern: " ++ foldr1 (\a b -> a ++ " | " ++ b) ps
 
 instance Show UnifyFailReason where
   show = \case

@@ -11,7 +11,7 @@ This implementation is based on the implementation of [Typing Haskell in Haskell
 * [x] Kind inference
 * [x] Explicit kind signatures and scoped type variables
 * [x] Multi-parameter type classes
-* [ ] Pattern exhaustiveness/useless checker
+* [x] Pattern exhaustiveness/useless checker
 * [ ] Functional dependencies
 * [ ] Row polymorphism
 * [ ] Effects
@@ -124,4 +124,4 @@ default {
 
 - [Mark P Jones: Typing Haskell in Haskell](https://web.cecs.pdx.edu/~mpj/thih/)
 - [Didier Rémy: Extension of ML type system with a sorted equational theory on types](https://hal.inria.fr/inria-00077006/document)
-
+- [LUC MARANGET: Warnings for pattern matching](http://moscova.inria.fr/~maranget/papers/warn/index.html)

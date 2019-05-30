@@ -13,6 +13,7 @@ import Titan.TT
 import Titan.Scope
 import Titan.Subst
 import Titan.DependencyAnalyzer (depGroups)
+import qualified Titan.PatternChecker as PC
 
 data TIState = TIState
   { _subst :: Subst Type
@@ -78,11 +79,10 @@ tiPattern ty = \case
   PWildcard ->
     return PWildcard
   PDecon vc ps -> do
-    -- FIXME: arity check required (partial application is diallowed)
     cty <- newTVar KType
     ptys <- mapM (\_ -> newTVar KType) ps
     unify (foldr (-->) ty ptys) cty
-    PDecon <$> tiUse cty vc <*> zipWithM tiPattern ptys ps
+    PDecon <$> tiValueCon (length ps) cty vc <*> zipWithM tiPattern ptys ps
   PLit l -> do
     PLit <$> tiLiteral ty l
 
@@ -103,11 +103,34 @@ tiExpr ty = \case
     binds <- scopedLevel $ tiBindGroup binds
     e <- scoped binds $ tiExpr ty e
     return $ ELet binds e
-  ELam alts ->
-    ELam <$> mapM (tiAlt ty) alts
+  ELam alts -> do
+    let arity = alts^.to NonEmpty.head.patterns.to length
+    alts <- mapM (tiAlt arity ty) alts
+    rows <- mapM (mapM simplifyPattern) $ toList (fmap (^..patterns.each) alts)
+    case PC.check rows of
+      PC.Useless ps -> throwError $ UselessPattern $ show ps
+      PC.NonExhaustive rows -> throwError $ NonExhaustivePattern $ map show rows
+      PC.Complete -> return ()
+    return $ ELam alts
 
-tiAlt :: TI m => Type -> Alt -> m Alt
-tiAlt ty (ps :-> e) = do
+simplifyPattern :: (MonadReader Scope m, MonadError Error m) => Pattern -> m PC.Pat
+simplifyPattern = \case
+  PVar _ (Just p) -> simplifyPattern p
+  PVar _ Nothing -> return PC.Wildcard
+  PWildcard -> return PC.Wildcard
+  PDecon vc ps -> case vc of
+    ValueConData id -> do
+      v <- resolveUse' id
+      ty <- resolveUse @_ @DataTypeCon (identity v)
+      vs <- resolveUse @_ @(Map (Id DataValueCon) DataValueCon) (identity ty)
+      ps <- mapM simplifyPattern ps
+      let tag v = (v^.ident.name, length (v^.fields))
+      return $ PC.Constructor (PC.TagClosed (tag v) (vs^..each.to tag)) ps
+  PLit l -> return $ PC.Constructor (PC.TagLit l) []
+
+tiAlt :: TI m => Arity -> Type -> Alt -> m Alt
+tiAlt arity ty (ps :-> e) = do
+  when (length ps /= arity) $ throwError $ ArityMismatch arity (length ps)
   defs <- forM (ps^..biplate) $ \(def :: PatternDef) -> do
     ty <- newTVar KType
     return (def, ty)
@@ -116,6 +139,14 @@ tiAlt ty (ps :-> e) = do
     ptys <- mapM (\_ -> newTVar KType) ps
     unify (foldr (-->) ety ptys) ty
     (:->) <$> sequence (NonEmpty.zipWith tiPattern ptys ps) <*> tiExpr ety e
+
+tiValueCon :: TI m => Arity -> Type -> ValueCon -> m ValueCon
+tiValueCon arity ty = \case
+  ValueConData id -> do
+    id <- tiUse ty id
+    v <- resolveUse' id
+    when (length (v^.fields) /= arity) $ throwError $ ArityMismatch (length (v^.fields)) arity
+    return $ ValueConData id
 
 tiExpl :: TI m => (Scheme, Maybe Expr) -> m (Maybe Expr)
 tiExpl (scheme, e) = splitInferCtx $ case e of

@@ -25,6 +25,8 @@ data Explicitness
 
 type Name = String
 
+type Arity = Int
+
 newtype Id a = Id
   { _name :: Name
   }
