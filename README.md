@@ -11,7 +11,7 @@ This implementation is based on the implementation of [Typing Haskell in Haskell
 * [x] Kind inference
 * [x] Explicit kind signatures and scoped type variables
 * [x] Multi-parameter type classes
-* [ ] Pattern exhaustiveness/useless checker
+* [x] Pattern exhaustiveness/useless checker
 * [ ] Functional dependencies
 * [ ] Row polymorphism
 * [ ] Effects

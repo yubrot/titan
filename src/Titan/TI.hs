@@ -13,6 +13,7 @@ import Titan.TT
 import Titan.Scope
 import Titan.Subst
 import Titan.DependencyAnalyzer (depGroups)
+import qualified Titan.PatternChecker as PC
 
 data TIState = TIState
   { _subst :: Subst Type
@@ -105,7 +106,27 @@ tiExpr ty = \case
   ELam alts -> do
     let arity = alts^.to NonEmpty.head.patterns.to length
     alts <- mapM (tiAlt arity ty) alts
+    rows <- mapM (mapM simplifyPattern) $ toList (fmap (^..patterns.each) alts)
+    case PC.check rows of
+      PC.Useless ps -> throwError $ UselessPattern $ show ps
+      PC.NonExhaustive rows -> throwError $ NonExhaustivePattern $ map show rows
+      PC.Complete -> return ()
     return $ ELam alts
+
+simplifyPattern :: (MonadReader Scope m, MonadError Error m) => Pattern -> m PC.Pat
+simplifyPattern = \case
+  PVar _ (Just p) -> simplifyPattern p
+  PVar _ Nothing -> return PC.Wildcard
+  PWildcard -> return PC.Wildcard
+  PDecon vc ps -> case vc of
+    ValueConData id -> do
+      v <- resolveUse' id
+      ty <- resolveUse @_ @DataTypeCon (identity v)
+      vs <- resolveUse @_ @(Map (Id DataValueCon) DataValueCon) (identity ty)
+      ps <- mapM simplifyPattern ps
+      let tag v = (v^.ident.name, length (v^.fields))
+      return $ PC.Constructor (PC.TagClosed (tag v) (vs^..each.to tag)) ps
+  PLit l -> return $ PC.Constructor (PC.TagLit l) []
 
 tiAlt :: TI m => Arity -> Type -> Alt -> m Alt
 tiAlt arity ty (ps :-> e) = do

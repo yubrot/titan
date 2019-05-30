@@ -104,6 +104,10 @@ spec = describe "Titan.TI" $ do
       ==>! \case CannotUnifyType _ _ OccursCheckFailed -> True; _ -> False
     "val f = fun 'a' -> 'b' | x -> x data Char"
       ==> "val f : [] Char -> Char = fun 'a' -> 'b' | x -> x data Char"
+    "val f = fun 'a' -> 'b' | 'a' -> 'd' data Char"
+      ==>! \case UselessPattern "'a'" -> True; _ -> False
+    "val f = fun 'a' -> 'b' data Char"
+      ==>! \case NonExhaustivePattern ["_"] -> True; _ -> False
     "val f = fun 'a' y -> y | x y -> x data Char"
       ==> "val f : [] Char -> Char -> Char = fun 'a' y -> y | x y -> x data Char"
     "val f = fun 'a' -> 'b' | \"a\" -> 'b' data Char data List a"
@@ -114,6 +118,8 @@ spec = describe "Titan.TI" $ do
       ==>! \case ArityMismatch 2 _ -> True; _ -> False
     "val f = fun A -> A data T { con A }"
       ==> "val f : [] T -> T = fun A -> A data T { con A }"
+    "val f = fun A -> A data T a { con A con B con C a }"
+      ==>! \case NonExhaustivePattern ["B", "(C _)"] -> True; _ -> False
     "val f = fun (A a) -> A data T { con A }"
       ==>! \case CannotUnifyType _ _ _ -> True; _ -> False
     "val f = fun A -> A data T { con A T }"

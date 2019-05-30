@@ -21,6 +21,8 @@ data Error
   | OverlappingInstances Instance Instance
   | NoMatchingInstances [Constraint] Constraint
   | CannotResolveAmbiguity Name [Constraint]
+  | UselessPattern String
+  | NonExhaustivePattern [String]
   deriving (Eq, Ord, Data, Typeable)
 
 data UnifyFailReason
@@ -44,6 +46,8 @@ instance Show Error where
     OverlappingInstances a b -> "Overlapping instances: " ++ pprint a ++ " and " ++ pprint b
     NoMatchingInstances ps p -> "No matching instances for " ++ pprint p ++ pprint (PrettyContext ps)
     CannotResolveAmbiguity a ps -> "Cannot resolve ambiguity for " ++ a ++ pprint (PrettyContext ps)
+    UselessPattern p -> "Useless pattern: " ++ p
+    NonExhaustivePattern ps -> "Non exhaustive pattern: " ++ foldr1 (\a b -> a ++ " | " ++ b) ps
 
 instance Show UnifyFailReason where
   show = \case

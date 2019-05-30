@@ -158,6 +158,9 @@ instance Resolvable Def Def where
 instance Resolvable DataTypeCon DataTypeCon where
   tryResolveUse id scope = scope^?global.dataTypes.ix id._1
 
+instance Resolvable DataTypeCon (Map (Id DataValueCon) DataValueCon) where
+  tryResolveUse id scope = scope^?global.dataTypes.ix id._2
+
 instance Resolvable DataValueCon (Id DataTypeCon) where
   tryResolveUse id scope = scope^?global.dataValueAssocs.ix id
 
@@ -170,6 +173,9 @@ instance Resolvable DataValueCon DataValueCon where
 
 instance Resolvable ClassCon ClassCon where
   tryResolveUse id scope = scope^?global.classes.ix id._1
+
+instance Resolvable ClassCon (Map (Id ClassMethod) ClassMethod) where
+  tryResolveUse id scope = scope^?global.classes.ix id._2
 
 instance Resolvable ClassMethod (Id ClassCon) where
   tryResolveUse id scope = scope^?global.classMethodAssocs.ix id
