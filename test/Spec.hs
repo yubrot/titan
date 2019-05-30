@@ -9,6 +9,7 @@ import qualified BinderTest
 import qualified ResolverTest
 import qualified KITest
 import qualified TITest
+import qualified PatternCheckerTest
 
 main :: IO ()
 main = hspec $ do
@@ -19,6 +20,7 @@ main = hspec $ do
   ResolverTest.spec
   KITest.spec
   TITest.spec
+  PatternCheckerTest.spec
   describe "std" $ do
     stdFiles <- runIO stdFiles
     testStd emptyGlobal stdFiles
