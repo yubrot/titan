@@ -11,7 +11,7 @@ import qualified Text.Megaparsec.Char as C
 import qualified Text.Megaparsec.Char.Lexer as L
 import Titan.Prelude hiding (many, some)
 import Titan.Error
-import Titan.TT hiding (kind, scheme, quantification, context)
+import Titan.TT hiding (kind, scheme, fundeps, quantification, context)
 
 type Parser = Parsec Void String
 
@@ -118,6 +118,9 @@ parameter = choice
   , parens (Parameter <$> parameterId <*> (Typed Explicit <$ reserved ":" <*> kind E))
   ]
 
+fundep :: Parser (Id a) -> Parser (Fundep a)
+fundep id = (:~>) <$> many id <* reserved "~>" <*> many id
+
 constraint :: Parser Constraint
 constraint = choice
   [ CClass <$> classConId <*> many (ty F)
@@ -125,6 +128,9 @@ constraint = choice
 
 scheme :: Parser Scheme
 scheme = Scheme <$> inferrable quantification <*> ty E <*> context
+
+fundeps :: Parser [Fundep Parameter]
+fundeps = option mempty $ reserved "|" *> (fundep parameterId `sepBy` symbol ",")
 
 quantification :: Parser [Parameter]
 quantification = symbol "[" *> many parameter <* symbol "]"
@@ -197,7 +203,7 @@ dataValueCon :: Parser DataValueCon
 dataValueCon = DataValueCon <$ reserved "con" <*> dataValueConId <*> many (ty F)
 
 classCon :: Parser ClassCon
-classCon = ClassCon <$ reserved "class" <*> classConId <*> many parameter <*> context
+classCon = ClassCon <$ reserved "class" <*> classConId <*> many parameter <*> fundeps <*> context
 
 classMethod :: Parser ClassMethod
 classMethod = ClassMethod <$ reserved "val" <*> valueId' <* reserved ":" <*> scheme <*> optional (reserved "=" *> expr E)

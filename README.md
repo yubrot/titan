@@ -110,6 +110,11 @@ class Ord a where Eq a {
   val compare : a -> a -> Ordering
 }
 
+class MonadState s m | m ~> s where Monad m {
+  val get : m s
+  val put : s -> m Unit
+}
+
 // instance
 instance Eq (Pair a b) where (Eq a, Eq b)
 

@@ -143,11 +143,13 @@ spec = describe "Titan.PrettyPrinter" $ do
       `shouldBe` "data Free (f : Type -> Type) a"
     test (DData (DataTypeCon (Id "List") [var "a"]) [DataValueCon (Id "Cons") [var "a", con "List" [var "a"]], DataValueCon (Id "Nil") []])
       `shouldBe` "data List a { con Cons a (List a) con Nil }"
-    test (DClass (ClassCon (Id "Eq") [var "a"] []) [])
+    test (DClass (ClassCon (Id "Eq") [var "a"] [] []) [])
       `shouldBe` "class Eq a"
-    test (DClass (ClassCon (Id "Eq") [var "a"] []) [ClassMethod (Id "eq") (Scheme Untyped (var "a" --> var "a" --> con "Bool" []) []) Nothing])
+    test (DClass (ClassCon (Id "Eq") [var "a"] [] []) [ClassMethod (Id "eq") (Scheme Untyped (var "a" --> var "a" --> con "Bool" []) []) Nothing])
       `shouldBe` "class Eq a { val eq : a -> a -> Bool }"
-    test (DClass (ClassCon (Id "Ord") [var "a"] [con "Eq" [var "a"]]) [ClassMethod (Id "compare") (Scheme Untyped (var "a" --> var "a" --> con "Ordering" []) []) Nothing])
+    test (DClass (ClassCon (Id "Coerce") [var "a", var "b"] [[Id "a"] :~> [Id "b"], [Id "b"] :~> [Id "a"]] []) [])
+      `shouldBe` "class Coerce a b | a ~> b, b ~> a"
+    test (DClass (ClassCon (Id "Ord") [var "a"] [] [con "Eq" [var "a"]]) [ClassMethod (Id "compare") (Scheme Untyped (var "a" --> var "a" --> con "Ordering" []) []) Nothing])
       `shouldBe` "class Ord a where Eq a { val compare : a -> a -> Ordering }"
     test (DInstance (Instance Untyped (Id "Eq") [con "Pair" [var "a", var "b"]] [con "Eq" [var "a"], con "Eq" [var "b"]]))
       `shouldBe` "instance Eq (Pair a b) where (Eq a, Eq b)"

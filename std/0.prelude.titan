@@ -1,3 +1,7 @@
+data Unit {
+  con Unit
+}
+
 data Bool {
   con True
   con False

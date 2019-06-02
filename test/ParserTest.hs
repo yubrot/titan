@@ -156,9 +156,11 @@ spec = describe "Titan.Parser" $ do
     test "data List a {\n  con Cons a (List a)\n  con Nil\n}"
       `shouldBe` Right (DData (DataTypeCon (Id "List") [var "a"]) [DataValueCon (Id "Cons") [var "a", con "List" [var "a"]], DataValueCon (Id "Nil") []])
     test "class Partial"
-      `shouldBe` Right (DClass (ClassCon (Id "Partial") [] []) [])
+      `shouldBe` Right (DClass (ClassCon (Id "Partial") [] [] []) [])
     test "class Ord a where Eq a {\n  val compare : a -> a -> Ordering\n}"
-      `shouldBe` Right (DClass (ClassCon (Id "Ord") [var "a"] [con "Eq" [var "a"]]) [ClassMethod (Id "compare") (Scheme Untyped (var "a" --> var "a" --> con "Ordering" []) []) Nothing])
+      `shouldBe` Right (DClass (ClassCon (Id "Ord") [var "a"] [] [con "Eq" [var "a"]]) [ClassMethod (Id "compare") (Scheme Untyped (var "a" --> var "a" --> con "Ordering" []) []) Nothing])
+    test "class Coerce a b | a ~> b"
+      `shouldBe` Right (DClass (ClassCon (Id "Coerce") [var "a", var "b"] [[Id "a"] :~> [Id "b"]] []) [])
     test "instance Eq (Pair a b) where (Eq a, Eq b)"
       `shouldBe` Right (DInstance (Instance Untyped (Id "Eq") [con "Pair" [var "a", var "b"]] [con "Eq" [var "a"], con "Eq" [var "b"]]))
     test "instance [] Eq Int"
