@@ -1,4 +1,4 @@
-module Titan.Subst
+module Titan.Unification
   ( Subst(..)
   , emptySubst
   , (+->)

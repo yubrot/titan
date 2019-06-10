@@ -1,4 +1,4 @@
-module Titan.KI
+module Titan.KindInference
   ( ki
   ) where
 
@@ -8,7 +8,7 @@ import Titan.Prelude
 import Titan.Error
 import Titan.TT
 import Titan.Scope
-import Titan.Subst
+import Titan.Unification
 import Titan.DependencyAnalyzer (depGroups)
 
 data KIState = KIState

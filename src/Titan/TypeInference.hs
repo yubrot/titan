@@ -1,4 +1,4 @@
-module Titan.TI
+module Titan.TypeInference
   ( ti
   ) where
 
@@ -11,13 +11,13 @@ import Titan.Prelude
 import Titan.Error
 import Titan.TT
 import Titan.Scope
-import Titan.Subst
+import Titan.Unification
 import Titan.DependencyAnalyzer (depGroups)
 import qualified Titan.PatternChecker as PC
 
 data TIState = TIState
   { _subst :: Subst Type
-  , _currentCtx :: [Constraint]
+  , _remainingCtx :: [Constraint]
   , _typeIds :: [Id Type]
   , _parameterIds :: [Id Parameter]
   }
@@ -61,15 +61,15 @@ tiAll :: TI m => Global -> m Global
 tiAll g = do
   defs' <- tiBindGroup (g^.defs)
   classes' <- scoped defs' $ mapM tiClass (g^.classes)
-  ctx <- use currentCtx
+  ctx <- use remainingCtx
   mapM_ (entail []) ctx
   return $ g & defs .~ defs' & classes .~ classes'
 
 tiLiteral :: TI m => Type -> Literal -> m Literal
 tiLiteral ty l = pure l <* case l of
-  LInteger _ -> currentCtx <>= [CNum ty]
+  LInteger _ -> remainingCtx <>= [CNum ty]
   LChar _ -> unify ty TChar
-  LFloat _ -> currentCtx <>= [CFractional ty]
+  LFloat _ -> remainingCtx <>= [CFractional ty]
   LString _ -> unify ty (TListCon @@ TChar)
 
 tiPattern :: TI m => Type -> Pattern -> m Pattern
@@ -149,7 +149,7 @@ tiValueCon arity ty = \case
     return $ ValueConData id
 
 tiExpl :: TI m => (Scheme, Maybe Expr) -> m (Maybe Expr)
-tiExpl (scheme, e) = splitInferCtx $ case e of
+tiExpl (scheme, e) = inferBlock $ case e of
   Nothing ->
     return Nothing
   Just e -> do
@@ -167,19 +167,19 @@ tiExpl (scheme, e) = splitInferCtx $ case e of
       err -> throwError err
 
     -- entail schemeCtx' inferredCtx'
-    inferredCtx' <- apply s <$> use currentCtx
+    inferredCtx' <- apply s <$> use remainingCtx
     let schemeCtx' = apply s (scheme^.context)
     unEntailedCtx <- filterM (fmap not . canEntail schemeCtx') inferredCtx'
     let excludedVars = vars topLevel inferredTy'
     SplitCtx { deferredCtx, retainedCtx } <- splitCtx excludedVars unEntailedCtx
-    currentCtx .= deferredCtx
+    remainingCtx .= deferredCtx
 
     case retainedCtx of
       [] -> return $ Just $ apply s e
       p:_ -> throwError $ NoMatchingInstances schemeCtx' p
 
 tiImpls :: TI m => [(Type, Maybe Expr)] -> m [(Scheme, Maybe Expr)]
-tiImpls impls = splitInferCtx $ do
+tiImpls impls = inferBlock $ do
   impls <- forM impls $ \(ty, e) -> case e of
     Nothing ->
       return (ty, Nothing)
@@ -188,13 +188,13 @@ tiImpls impls = splitInferCtx $ do
       return (ty, Just e)
   s <- use subst
 
-  inferredCtx' <- apply s <$> use currentCtx
+  inferredCtx' <- apply s <$> use remainingCtx
   let impls' = map (first (apply s)) impls
   -- We can determine the ambiguity of type variables from every use-site only if
   -- the ambiguous variables appear in all type signatures.
   let excludedVars = foldr1 Set.intersection $ map (vars topLevel . fst) impls'
   SplitCtx { deferredCtx, retainedCtx, defaultedCtx } <- splitCtx excludedVars inferredCtx'
-  currentCtx .= deferredCtx
+  remainingCtx .= deferredCtx
 
   impls <- forM impls' $ \(ty, e) -> do
     let relates p = not $ Set.disjoint (vars @Type topLevel ty) (vars topLevel p)
@@ -244,19 +244,19 @@ tiBindGroup binds = do
     return $ map & ix id.bindItem._2 .~ e
 
 tiClass :: TI m => Class -> m Class
-tiClass (cls, cms) = splitInferCtx $ do
+tiClass (cls, cms) = inferBlock $ do
   ps <- params cls
   (ptys, _) <- instantiate cls
   cms <- scoped (zip ps ptys) $ scopedLevel $ tiBindGroup cms
   s <- use subst
 
   let ptys' = apply s ptys
-  inferredCtx' <- apply s <$> use currentCtx
+  inferredCtx' <- apply s <$> use remainingCtx
   let classCtx = [CClass (identity cls) ptys']
   unEntailedCtx <- filterM (fmap not . canEntail classCtx) inferredCtx'
   let excludedVars = vars topLevel ptys'
   SplitCtx { deferredCtx, retainedCtx } <- splitCtx excludedVars unEntailedCtx
-  currentCtx .= deferredCtx
+  remainingCtx .= deferredCtx
 
   case retainedCtx of
     [] -> return (cls, cms)
@@ -266,9 +266,16 @@ tiUse :: (TypeOf a, TI m) => Type -> a -> m a
 tiUse ty a = do
   scheme <- typeOf a
   (_, scheme) <- instantiate scheme
-  currentCtx <>= scheme^.context
+  remainingCtx <>= scheme^.context
   unify ty (scheme^.body)
   return a
+
+inferBlock :: TI m => m a -> m a
+inferBlock m = do
+  stashedCtx <- remainingCtx %%= \ctx -> (ctx, [])
+  r <- m
+  remainingCtx %= \ctx -> ctx <> stashedCtx
+  return r
 
 data SplitCtx = SplitCtx
   { deferredCtx :: [Constraint]
@@ -399,13 +406,6 @@ instance Parameterized Instance where
   params inst = case inst^?quantification.typed of
     Just params -> pure params
     Nothing -> throwError $ InternalError "Resolver" "Escaped untyped parameters"
-
-splitInferCtx :: TI m => m a -> m a
-splitInferCtx m = do
-  stashedCtx <- currentCtx %%= \ctx -> (ctx, [])
-  r <- m
-  currentCtx %= \ctx -> ctx <> stashedCtx
-  return r
 
 unify :: TI m => Type -> Type -> m ()
 unify t1 t2 = do
