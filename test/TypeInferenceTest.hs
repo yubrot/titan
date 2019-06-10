@@ -180,12 +180,16 @@ spec = describe "Titan.TypeInference" $ do
       ==> "class F { val f : [(a : Type)] a }"
     "val g = f class F { val f : a }"
       ==>! \case NoMatchingInstances _ _ -> True; _ -> False
+    "val g = f class F { val f : a } instance F"
+      ==> "val g : [(b : Type)] b = f class F { val f : [(a : Type)] a } instance [] F"
     "val g : a = f class F { val f : a }"
       ==>! \case NoMatchingInstances _ _ -> True; _ -> False
     "val g : a where F = f class F { val f : a }"
       ==> "val g : [(a : Type)] a where F = f class F { val f : [(a : Type)] a }"
     "val g = f class F a { val f : a }"
       ==> "val g : [(b : Type)] b where F b = f class F (a : Type) { val f : [] a }"
+    "val g = f class F a { val f : a } instance F a"
+      ==> "val g : [(b : Type)] b where F b = f class F (a : Type) { val f : [] a } instance [(a : Type)] F a"
     "val g = f class F a { val f : a -> b }"
       ==> "val g : [(c : Type) (d : Type)] c -> d where F c = f class F (a : Type) { val f : [(b : Type)] a -> b }"
     "data Char class F a { val f : Char = 'a' }"
@@ -213,7 +217,7 @@ spec = describe "Titan.TypeInference" $ do
       ==> "val f : [(a : Type)] a where Num a = f class Num (x : Type)"
     "val f : a where Num a = 0 class Num x"
       ==> "val f : [(a : Type)] a where Num a = 0 class Num (x : Type)"
-    "val f : a where Fractional a = 0 class Fractional x"
+    "val f : a where Fractional a = 0 class Fractional x class Num x"
       ==>! \case NoMatchingInstances _ _ -> True; _ -> False
     "val f : a where Fractional a = 0 class Fractional x where Num x class Num x"
       ==> "val f : [(a : Type)] a where Fractional a = 0 class Fractional (x : Type) where Num x class Num (x : Type)"
@@ -249,9 +253,59 @@ spec = describe "Titan.TypeInference" $ do
     "val f val g = f h class Functor f { val h : f x }"
       ==>! \case CannotResolveAmbiguity _ _ -> True; _ -> False
     -- FIXME: This should be resolvable:
-    "val f val g = f h class Functor f { val h : f x } instance Functor f"
+    "val f val g = f h data Maybe t class Functor f { val h : f x } instance Functor Maybe"
       ==>! \case CannotResolveAmbiguity _ _ -> True; _ -> False
     "val f val g = f h data Maybe t class Functor f { val h : f x } instance Functor Maybe default { Maybe }"
       ==> "val f : [(a : Type)] a val g : [(b : Type)] b = f h data Maybe (t : Type) class Functor (f : Type -> Type) { val h : [(x : Type)] f x } instance [] Functor Maybe default { Maybe }"
     "val f val g = f h data Int data Maybe t class Functor f { val h : f x } instance Functor Maybe default { Int Maybe }"
       ==> "val f : [(a : Type)] a val g : [(b : Type)] b = f h data Int data Maybe (t : Type) class Functor (f : Type -> Type) { val h : [(x : Type)] f x } instance [] Functor Maybe default { Int Maybe }"
+  it "verify classes with functional dependencies" $ do
+    "class F a b | a ~> b"
+      ==> "class F (a : Type) (b : Type) | a ~> b"
+    "class F a b | a ~> b class G a b where F a b"
+      ==>! \case FundepsAreWeakerThanSuperclasses _ _ -> True; _ -> False
+    "class F a b | a ~> b class G a b | a ~> b where F a b"
+      ==> "class F (a : Type) (b : Type) | a ~> b class G (a : Type) (b : Type) | a ~> b where F a b"
+    "class F a b | a ~> b class G a b c | a c ~> b where F a b"
+      ==>! \case FundepsAreWeakerThanSuperclasses _ _ -> True; _ -> False
+    "class F a b c | a b ~> c class G a b c | a ~> c where F a b c"
+      ==> "class F (a : Type) (b : Type) (c : Type) | a b ~> c class G (a : Type) (b : Type) (c : Type) | a ~> c where F a b c"
+    "class F a b c | a b ~> c class G a b | a ~> b where F a b b"
+      ==> "class F (a : Type) (b : Type) (c : Type) | a b ~> c class G (a : Type) (b : Type) | a ~> b where F a b b"
+    "class F a b | a ~> b class G b a | a ~> b where F b a"
+      ==>! \case FundepsAreWeakerThanSuperclasses _ _ -> True; _ -> False
+    "class F a b c | a ~> b class G a b c | a ~> b c where F a c b"
+      ==> "class F (a : Type) (b : Type) (c : Type) | a ~> b class G (a : Type) (b : Type) (c : Type) | a ~> b c where F a c b"
+    "class F a b c | a ~> b c class G a b c | a ~> b where F a b c"
+      ==>! \case FundepsAreWeakerThanSuperclasses _ _ -> True; _ -> False
+  it "verify instances with functional dependencies" $ do
+    "class F a b instance F a b"
+      ==> "class F (a : Type) (b : Type) instance [(a : Type) (b : Type)] F a b"
+    "data A data B class F a b | a ~> b instance F A B"
+      ==> "data A data B class F (a : Type) (b : Type) | a ~> b instance [] F A B"
+    "data A data B class F a b | a ~> b instance F a b"
+      ==>! \case CoverageConditionUnsatisfied _ _ -> True; _ -> False
+    "data T a class F a b | a ~> b instance F (T a) a"
+      ==> "data T (a : Type) class F (a : Type) (b : Type) | a ~> b instance [(a : Type)] F (T a) a"
+    "data T a class F a b | a ~> b instance F a (T a)"
+      ==> "data T (a : Type) class F (a : Type) (b : Type) | a ~> b instance [(a : Type)] F a (T a)"
+    "data A class F a b | a ~> b instance F a A"
+      ==> "data A class F (a : Type) (b : Type) | a ~> b instance [(a : Type)] F a A"
+    "data A class F a b | a ~> b instance F A a"
+      ==>! \case CoverageConditionUnsatisfied _ _ -> True; _ -> False
+    "data T a class F a b | a ~> b instance F (T x) y where F x y"
+      ==> "data T (a : Type) class F (a : Type) (b : Type) | a ~> b instance [(x : Type) (y : Type)] F (T x) y where F x y"
+    "class F a b | a ~> b instance F x y where F x x"
+      ==>! \case CoverageConditionUnsatisfied _ _ -> True; _ -> False
+    "data A data B class F a b | a ~> b instance F A A instance F B A"
+      ==> "data A data B class F (a : Type) (b : Type) | a ~> b instance [] F A A instance [] F B A"
+    "data A data B class F a b | a ~> b instance F A A instance F A B"
+      ==>! \case ConsistencyConditionUnsatisfied _ _ _ -> True; _ -> False
+    "data A data B data T a b class F a b c | a ~> b instance F (T a b) a A instance F (T a b) a B"
+      ==> "data A data B data T (a : Type) (b : Type) class F (a : Type) (b : Type) (c : Type) | a ~> b instance [(a : Type) (b : Type)] F (T a b) a A instance [(a : Type) (b : Type)] F (T a b) a B"
+    "data A data B data T a b class F a b c | a ~> b instance F (T a b) a A instance F (T a b) b B"
+      ==>! \case ConsistencyConditionUnsatisfied _ _ _ -> True; _ -> False
+    "data Float data Int class Add a b c | a b ~> c instance Add Float Float Float instance Add Float Int Float instance Add Int Float Float instance Add Int Int Int"
+      ==> "data Float data Int class Add (a : Type) (b : Type) (c : Type) | a b ~> c instance [] Add Float Float Float instance [] Add Float Int Float instance [] Add Int Float Float instance [] Add Int Int Int"
+    "data Float data Int class Add a b c | a b ~> c instance Add Float Float Float instance Add Float Int Float instance Add Int Float Float instance Add Int Int Int instance Add Int Int Float"
+      ==>! \case ConsistencyConditionUnsatisfied _ _ _ -> True; _ -> False

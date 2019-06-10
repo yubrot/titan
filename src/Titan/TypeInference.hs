@@ -12,6 +12,7 @@ import Titan.Error
 import Titan.TT
 import Titan.Scope
 import Titan.Unification
+import Titan.FunctionalDependency
 import Titan.DependencyAnalyzer (depGroups)
 import qualified Titan.PatternChecker as PC
 
@@ -40,22 +41,57 @@ type TI m = (MonadReader Scope m, MonadState TIState m, MonadError Error m)
 verifyClasses :: TI m => m ()
 verifyClasses = do
   classes <- view (global.classes)
-  let classDepGroups = depGroups $ Map.assocs (classes & traverse._2 .~ mempty)
-  forM_ (classDepGroups :: [[Class]]) $ \case
-    [_] -> return ()
-    classes -> throwError $ CyclicClasses $ classes^..each._1.ident.name
+
+  forM_ (depGroups $ Map.assocs (fmap fst classes)) $ \case
+    [cls] -> do
+      superFundeps <- inducedFundeps @Parameter (cls^.superclasses)
+      forM_ superFundeps $ \superFundep@(x' :~> y') -> do
+        let isStricter (x :~> y) = all (`elem` x') x && all (`elem` y) y'
+        unless (any isStricter (cls^.fundeps)) $
+          throwError $ FundepsAreWeakerThanSuperclasses cls superFundep
+    classes ->
+      throwError $ CyclicClasses $ classes^..each.ident.name
 
 verifyInstances :: TI m => m ()
 verifyInstances = do
   instances <- view (global.instances)
-  forM_ [(a, b) | insts <- instances^..traverse, a:bs <- List.tails insts, b <- bs] $ \(a, b) -> do
-    (_, a') <- instantiate a
-    (_, b') <- instantiate b
-    s <- runExceptT $ mgu @Type (a'^.arguments) (b'^.arguments)
-    case s of
-      Right _ -> throwError $ OverlappingInstances a b
-      Left (CannotUnifyType _ _ _) -> return ()
-      Left e -> throwError e
+
+  forM_ (Map.assocs instances) $ \(classId, insts) -> do
+    cls <- resolveUse' classId
+    forM_ insts $ \inst -> do
+      -- Covering:
+      -- To ensure that instance P => C t is valid, we must check that
+      -- TV(t_Y) \subseteq (TV(t_X))^+_{F_P} for each (X \leadsto Y) \in F_C .
+      let t = indexParams (cls^.parameters) (inst^.arguments)
+      let tv' = Set.fromList . tv
+      -- We don't need to expand inst^.context by superclasses since
+      -- Titan disallows classes whose fundeps are weaker than its superclasses.
+      instFundeps <- inducedFundeps @Parameter (inst^.context)
+      forM_ (cls^.fundeps) $ \fundep@(x :~> y) ->
+        unless (tv' (t y) `Set.isSubsetOf` closure (tv' (t x)) instFundeps) $
+          throwError $ CoverageConditionUnsatisfied inst fundep
+
+    forM_ [(a, b) | a:bs <- List.tails insts, b <- bs] $ \(a, b) -> do
+      (_, a') <- instantiate a
+      (_, b') <- instantiate b
+
+      -- Consistency:
+      -- Given a second instance Q => C s, and a dependency (X \leadsto Y) \in F_C ,
+      -- then we must ensure that t_Y = s_Y whenever t_X = s_X .
+      let t = indexParams (cls^.parameters) (a'^.arguments)
+      let s = indexParams (cls^.parameters) (b'^.arguments)
+      forM_ (cls^.fundeps) $ \fundep@(x :~> y) -> do
+        u <- runExceptT $ mgu @Type (t x) (s x)
+        forMOf_ _Right u $ \u ->
+          when (apply u (t y) /= apply u (s y)) $
+            throwError $ ConsistencyConditionUnsatisfied a b fundep
+
+      -- Eager overlapping check:
+      u <- runExceptT $ mgu @Type (a'^.arguments) (b'^.arguments)
+      case u of
+        Right _ -> throwError $ OverlappingInstances a b
+        Left (CannotUnifyType _ _ _) -> return ()
+        Left e -> throwError e
 
 tiAll :: TI m => Global -> m Global
 tiAll g = do
@@ -110,8 +146,7 @@ tiExpr ty = \case
     case PC.check rows of
       PC.Useless ps -> throwError $ UselessPattern $ show ps
       PC.NonExhaustive rows -> throwError $ NonExhaustivePattern $ map show rows
-      PC.Complete -> return ()
-    return $ ELam alts
+      PC.Complete -> return $ ELam alts
 
 simplifyPattern :: (MonadReader Scope m, MonadError Error m) => Pattern -> m PC.Pat
 simplifyPattern = \case
