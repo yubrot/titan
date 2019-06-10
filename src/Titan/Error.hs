@@ -23,7 +23,8 @@ data Error
   | CoverageConditionUnsatisfied Instance (Fundep Parameter)
   | ConsistencyConditionUnsatisfied Instance Instance (Fundep Parameter)
   | NoMatchingInstances [Constraint] Constraint
-  | CannotResolveAmbiguity Name [Constraint]
+  | InstanceResolutionExhausted Constraint
+  | CannotResolveAmbiguity (Id Type) [Constraint]
   | UselessPattern String
   | NonExhaustivePattern [String]
   deriving (Eq, Ord, Data, Typeable)
@@ -51,7 +52,8 @@ instance Show Error where
     CoverageConditionUnsatisfied inst fundep -> "Coverage condition unsatisfied for " ++ pprint fundep ++ ": " ++ pprint inst
     ConsistencyConditionUnsatisfied a b fundep -> "Consistency condition unsatisfied for " ++ pprint fundep ++ ": " ++ pprint a ++ " and " ++ pprint b
     NoMatchingInstances ps p -> "No matching instances for " ++ pprint p ++ pprint (PrettyContext ps)
-    CannotResolveAmbiguity a ps -> "Cannot resolve ambiguity for " ++ a ++ pprint (PrettyContext ps)
+    InstanceResolutionExhausted p -> "Instance resolution exhausted for " ++ pprint p
+    CannotResolveAmbiguity a ps -> "Cannot resolve ambiguity for _" ++ pprint a ++ pprint (PrettyContext ps)
     UselessPattern p -> "Useless pattern: " ++ p
     NonExhaustivePattern ps -> "Non exhaustive pattern: " ++ foldr1 (\a b -> a ++ " | " ++ b) ps
 

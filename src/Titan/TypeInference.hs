@@ -23,12 +23,35 @@ data TIState = TIState
   , _parameterIds :: [Id Parameter]
   }
 
+data Premise = Premise
+  { _constraint :: Constraint
+  , _ensures :: [Constraint]
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data Entailment = Entailment
+  { _constraint :: Constraint
+  , _resolvedInstance :: Maybe ResolvedInstance
+  , _wantVars :: Set (Id Type)
+  , _complete :: Bool
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ResolvedInstance
+  = ResolvedInstanceByPremise Premise
+  | ResolvedInstanceByEnv Instance [Type] [Entailment]
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+makeFieldsNoPrefix ''TIState
+makeFieldsNoPrefix ''Premise
+makeFieldsNoPrefix ''Entailment
+
+instance Plated Entailment
+
 emptyTIState :: Global -> TIState
 emptyTIState g = TIState emptySubst mempty ids (filter (`Set.notMember` usedParams) ids)
  where
   usedParams = Set.fromList [id | Parameter id _ <- g^..biplate]
-
-makeFieldsNoPrefix ''TIState
 
 ti :: MonadError Error m => Global -> m Global
 ti g = evalStateT ?? emptyTIState g $ runReaderT ?? emptyScope g $ do
@@ -97,8 +120,8 @@ tiAll :: TI m => Global -> m Global
 tiAll g = do
   defs' <- tiBindGroup (g^.defs)
   classes' <- scoped defs' $ mapM tiClass (g^.classes)
-  ctx <- use remainingCtx
-  mapM_ (entail []) ctx
+  constCtx <- use remainingCtx
+  forM_ constCtx $ \p -> unlessM (entail [] p) $ throwError $ NoMatchingInstances [] p
   return $ g & defs .~ defs' & classes .~ classes'
 
 tiLiteral :: TI m => Type -> Literal -> m Literal
@@ -184,59 +207,42 @@ tiValueCon arity ty = \case
     return $ ValueConData id
 
 tiExpl :: TI m => (Scheme, Maybe Expr) -> m (Maybe Expr)
-tiExpl (scheme, e) = inferBlock $ case e of
+tiExpl (scheme, e) = case e of
   Nothing ->
     return Nothing
-  Just e -> do
+  Just e -> inferBlock $ \produce -> do
     scheme <- captureScopedTypeVariables scheme
     ps <- params scheme
     (ptys, scheme) <- instantiate scheme
     e <- scoped (zip ps ptys) $ tiExpr (scheme^.body) e
-    s <- use subst
 
-    -- schemeTy <: inferredTy'
-    let inferredTy' = apply s (scheme^.body)
-    let schemeTy = scheme^.body
-    void $ match @Type inferredTy' schemeTy `catchError` \case
-      MatchFailed -> throwError $ CannotUnifyType schemeTy inferredTy' SignatureTooGeneral
-      err -> throwError err
-
-    -- entail schemeCtx' inferredCtx'
-    inferredCtx' <- apply s <$> use remainingCtx
-    let schemeCtx' = apply s (scheme^.context)
-    unEntailedCtx <- filterM (fmap not . canEntail schemeCtx') inferredCtx'
-    let excludedVars = vars topLevel inferredTy'
-    SplitCtx { deferredCtx, retainedCtx } <- splitCtx excludedVars unEntailedCtx
-    remainingCtx .= deferredCtx
-
-    case retainedCtx of
-      [] -> return $ Just $ apply s e
-      p:_ -> throwError $ NoMatchingInstances schemeCtx' p
+    produce (scheme^.context) $ do
+      s <- use subst
+      _ <- consumeDefaultedCtx $ vars topLevel $ apply s (scheme^.body)
+      (scheme^.body) <: apply s (scheme^.body)
+      return $ Just $ apply s e
 
 tiImpls :: TI m => [(Type, Maybe Expr)] -> m [(Scheme, Maybe Expr)]
-tiImpls impls = inferBlock $ do
+tiImpls impls = inferBlock $ \produce -> do
   impls <- forM impls $ \(ty, e) -> case e of
     Nothing ->
       return (ty, Nothing)
     Just e -> do
       e <- tiExpr ty e
       return (ty, Just e)
-  s <- use subst
 
-  inferredCtx' <- apply s <$> use remainingCtx
-  let impls' = map (first (apply s)) impls
-  -- We can determine the ambiguity of type variables from every use-site only if
-  -- the ambiguous variables appear in all type signatures.
-  let excludedVars = foldr1 Set.intersection $ map (vars topLevel . fst) impls'
-  SplitCtx { deferredCtx, retainedCtx, defaultedCtx } <- splitCtx excludedVars inferredCtx'
-  remainingCtx .= deferredCtx
-
-  impls <- forM impls' $ \(ty, e) -> do
-    let relates p = not $ Set.disjoint (vars @Type topLevel ty) (vars topLevel p)
-    let ctx = retainedCtx <> filter relates defaultedCtx
-    (params, s') <- quantify (ctx, ty)
-    return $ apply (extend s' s) (Scheme (Typed Explicit params) ty ctx, e)
-  return impls
+  produce [] $ do
+    s <- use subst
+    let impls' = map (first (apply s)) impls
+    -- We can determine the ambiguity of type variables from every use-site only if
+    -- the ambiguous variables appear in all type signatures.
+    defaultedCtx <- consumeDefaultedCtx $ foldr1 Set.intersection $ map (vars topLevel . fst) impls'
+    retainedCtx <- consumeRemainingCtx
+    forM impls' $ \(ty, e) -> do
+      let relates p = not $ Set.disjoint (vars @Type topLevel ty) (vars topLevel p)
+      let ctx = retainedCtx <> filter relates defaultedCtx
+      (params, s') <- quantify (ty, ctx)
+      return $ apply (extend s' s) (Scheme (Typed Explicit params) ty ctx, e) & _1.context %~ List.sort
 
 class (Data a, Scoped a, Identified a) => BindItem a where
   bindItem :: Lens' a (Typing Scheme, Maybe Expr)
@@ -279,23 +285,15 @@ tiBindGroup binds = do
     return $ map & ix id.bindItem._2 .~ e
 
 tiClass :: TI m => Class -> m Class
-tiClass (cls, cms) = inferBlock $ do
+tiClass (cls, cms) = inferBlock $ \produce -> do
   ps <- params cls
   (ptys, _) <- instantiate cls
   cms <- scoped (zip ps ptys) $ scopedLevel $ tiBindGroup cms
-  s <- use subst
 
-  let ptys' = apply s ptys
-  inferredCtx' <- apply s <$> use remainingCtx
-  let classCtx = [CClass (identity cls) ptys']
-  unEntailedCtx <- filterM (fmap not . canEntail classCtx) inferredCtx'
-  let excludedVars = vars topLevel ptys'
-  SplitCtx { deferredCtx, retainedCtx } <- splitCtx excludedVars unEntailedCtx
-  remainingCtx .= deferredCtx
-
-  case retainedCtx of
-    [] -> return (cls, cms)
-    p:_ -> throwError $ NoMatchingInstances classCtx p
+  produce [CClass (identity cls) ptys] $ do
+    s <- use subst
+    _ <- consumeDefaultedCtx $ vars topLevel (apply s ptys)
+    return (cls, cms)
 
 tiUse :: (TypeOf a, TI m) => Type -> a -> m a
 tiUse ty a = do
@@ -305,111 +303,195 @@ tiUse ty a = do
   unify ty (scheme^.body)
   return a
 
-inferBlock :: TI m => m a -> m a
-inferBlock m = do
-  stashedCtx <- remainingCtx %%= \ctx -> (ctx, [])
-  r <- m
-  remainingCtx %= \ctx -> ctx <> stashedCtx
-  return r
+inferBlock :: TI m => (([Constraint] -> m a -> m a) -> m a) -> m a
+inferBlock body = stashCtx (const True) (body produce)
+ where
+  produce premises m = do
+    s <- use subst
+    ctx <- use remainingCtx
+    ctx <- reduceContext (apply s premises) (apply s ctx)
+    remainingCtx .= ctx
+    lv <- view level
+    stashCtx (null . vars @Type lv) (m <* verifyNoRemainingCtx premises)
+  stashCtx cond m = do
+    deferredCtx <- remainingCtx %%= List.partition cond
+    result <- m
+    remainingCtx <>= deferredCtx
+    return result
 
-data SplitCtx = SplitCtx
-  { deferredCtx :: [Constraint]
-  , retainedCtx :: [Constraint]
-  , defaultedCtx :: [Constraint]
-  }
+consumeDefaultedCtx :: TI m => Set (Id Type) -> m [Constraint]
+consumeDefaultedCtx excludedVars = do
+  ctx <- use remainingCtx
+  defaultedCtx <- resolveAmbiguities excludedVars ctx
+  remainingCtx .= ctx List.\\ defaultedCtx
+  return defaultedCtx
 
-splitCtx :: TI m => Set (Id Type) -> [Constraint] -> m SplitCtx
-splitCtx excludedVars ctx = do
-  lv <- view level
-  let (deferredCtx, retainedCtx) = List.partition (null . vars @Type lv) ctx
-  (_, defaultedCtx) <- defaults excludedVars retainedCtx
-  return $ SplitCtx { deferredCtx, retainedCtx = retainedCtx List.\\ defaultedCtx, defaultedCtx }
+consumeRemainingCtx :: TI m => m [Constraint]
+consumeRemainingCtx = remainingCtx %%= \ctx -> (ctx, [])
 
-defaults :: TI m => Set (Id Type) -> [Constraint] -> m (Subst Type, [Constraint])
-defaults excludedVars ctx = do
+verifyNoRemainingCtx :: TI m => [Constraint] -> m ()
+verifyNoRemainingCtx premises = do
+  ctx <- use remainingCtx
+  forM_ ctx $ \p -> do
+    s <- use subst
+    throwError $ NoMatchingInstances (apply s premises) p
+
+resolveAmbiguities :: TI m => Set (Id Type) -> [Constraint] -> m [Constraint]
+resolveAmbiguities excludedVars context = do
+  contextFundeps <- inducedFundeps @Type context
+  let excludedVars' = closure excludedVars contextFundeps
+
   dflt <- view (global.defaultTypes)
-  lv <- view level
   let candidateTys = dflt^..each.candidates.each
-  let ambiguousVars = vars lv ctx Set.\\ excludedVars
-  defaults <- sequence $ Map.fromSet ?? ambiguousVars $ \var -> do
-    let relatedCtx = [p | p <- ctx, Set.member var (vars lv p)]
+
+  lv <- view level
+  let ambiguousVars = vars @Type lv context Set.\\ excludedVars'
+  defaults <- forM (toList ambiguousVars) $ \var -> do
+    let relatedCtx = [p | p <- context, Set.member var (vars @Type lv p)]
     acceptedTys <- filterM (accept var relatedCtx) candidateTys
     case acceptedTys of
       ty:_ -> return (ty, relatedCtx)
-      [] -> throwError $ CannotResolveAmbiguity ("_" ++ var^.name) relatedCtx
-  return (Subst $ fmap (^._1) defaults, defaults^..each._2.each)
+      _ -> throwError $ CannotResolveAmbiguity var relatedCtx
+
+  return (defaults^..each._2.each)
  where
   accept var ctx ty = do
     k <- kindOf ty
     tests <- forM ctx $ \case
-      CClass cls [TVar var' k' _] | var == var' && k == k' -> canEntail [] (CClass cls [ty])
+      CClass cls [TVar var' k' _] | var == var' && k == k' -> entail [] (CClass cls [ty])
       _ -> return False
     return $ and tests
 
-data ResolvedInstance
-  = ResolvedInstanceByPremise Constraint
-  | ResolvedInstanceByEnv Instance [Type] [ResolvedInstance]
-  deriving (Eq, Ord, Show, Data, Typeable)
-
-canEntail :: TI m => [Constraint] -> Constraint -> m Bool
-canEntail ps p = do
-  resolvedInst <- runExceptT $ entail ps p
-  case resolvedInst of
-    Right _ -> return True
-    Left (NoMatchingInstances _ _) -> return False
-    Left e -> throwError e
-
-entail :: TI m => [Constraint] -> Constraint -> m ResolvedInstance
-entail ps p = do
-  qss <- mapM expandPremises ps
-  let
-    premises = Map.fromList [(q, p) | (p, qs) <- zip ps qss, q <- qs]
-    entail' [] p = throwError $ NoMatchingInstances ps p
-    entail' (_:cap) p = case premises^.at p of
-      Just p ->
-        return $ ResolvedInstanceByPremise p
-      Nothing ->
-        resolveInstances p >>= \case
-          [(inst, tys)] -> do
-            inst' <- substitute tys inst
-            contextInsts <- mapM (entail' cap) (inst'^.context)
-            return $ ResolvedInstanceByEnv inst tys contextInsts
-          [] ->
-            throwError $ NoMatchingInstances ps p
-          _ ->
-            throwError $ InternalError "TI" "There exists overlapping instances"
-  entail' (replicate 200 ()) p
+reduceContext :: TI m => [Constraint] -> [Constraint] -> m [Constraint]
+reduceContext ps es = do
+  premises <- mapM buildPremise ps
+  entails <- mapM (buildEntailment premises) es
+  cache <- foldlMOf (each.ensures.each) improveByPredicates mempty premises
+  reduce premises entails cache entails
  where
+  reduce premises entails cache = \case
+    [] -> return $ nubOrd [p | entail <- entails, p <- expand entail]
+    diff -> do
+      mapMOf_ (each.cosmos.constraint) improveByInstances diff
+      cache <- foldlMOf (each.cosmos.constraint) improveByPredicates cache diff
+      s <- use subst
+      (entails, diff) <- runWriterT $ mapM (updateEntailment premises s) entails
+      reduce premises entails cache diff
+  expand entail = if
+    | entail^.complete -> []
+    | otherwise -> case entail^.resolvedInstance of
+        Just (ResolvedInstanceByEnv _ _ es) -> es >>= expand
+        _ -> [entail^.constraint]
 
-expandPremises :: TI m => Constraint -> m [Constraint]
-expandPremises p = do
-  supers <- expandSupers p
-  ps <- mapM expandPremises supers
-  return (p : concat ps)
+entail :: TI m => [Premise] -> Constraint -> m Bool
+entail premises p = do
+  e <- buildEntailment premises p
+  return (e^.complete)
 
-expandSupers :: TI m => Constraint -> m [Constraint]
-expandSupers = \case
-  CClass id tys -> do
-    cls <- resolveUse' id
-    cls <- substitute tys cls
-    return (cls^.superclasses)
+buildEntailment :: TI m => [Premise] -> Constraint -> m Entailment
+buildEntailment premises p = build 0 p
+ where
+  build recur p = produceEntailment p <$> if
+    | recur > 200 ->
+        throwError $ InstanceResolutionExhausted p
+    | otherwise ->
+        case [premise | premise <- premises, q <- premise^.ensures, q == p] of
+          premise:_ ->
+            return $ Just $ ResolvedInstanceByPremise premise
+          [] ->
+            matchingInstances p >>= \case
+              [(inst, args)] -> do
+                inst' <- substitute args inst
+                es <- mapM (build (succ recur)) (inst'^.context)
+                return $ Just $ ResolvedInstanceByEnv inst args es
+              [] ->
+                return Nothing
+              _ ->
+                throwError $ InternalError "TI" "There exists overlapping instances"
 
-resolveInstances :: TI m => Constraint -> m [(Instance, [Type])]
-resolveInstances = \case
-  CClass id tys -> do
+updateEntailment :: (TI m, MonadWriter [Entailment] m) => [Premise] -> Subst Type -> Entailment -> m Entailment
+updateEntailment premises s e = update e
+ where
+  update e = if
+    | worthApply s (e^.wantVars) -> do
+        let p = apply s (e^.constraint)
+        e' <- case e^.resolvedInstance of
+          Just (ResolvedInstanceByEnv inst args es) -> do
+            es <- mapM update es
+            return $ produceEntailment p $ Just $ ResolvedInstanceByEnv inst args es
+          _ ->
+            buildEntailment premises p
+        when (e /= e') $ tell [e']
+        return e'
+    | otherwise ->
+        return e
+
+produceEntailment :: Constraint -> Maybe ResolvedInstance -> Entailment
+produceEntailment p ri = Entailment p ri allVars allComplete
+ where
+  (allVars, allComplete) = case ri of
+    Just (ResolvedInstanceByEnv _ _ es) ->
+      (Set.unions [e^.wantVars | e <- es], all (^.complete) es)
+    Just (ResolvedInstanceByPremise _) ->
+      (mempty, True)
+    Nothing ->
+      (vars @Type topLevel p, False)
+
+matchingInstances :: TI m => Constraint -> m [(Instance, [Type])]
+matchingInstances = \case
+  CClass id args -> do
     insts <- resolveUse @_ @[Instance] id
     insts <- forM insts $ \inst -> runExceptT $ do
       (vs, inst') <- instantiate inst
-      s <- match @Type (inst'^.arguments) tys
+      s <- match @Type (inst'^.arguments) args
       return (inst, apply s vs)
     return $ rights insts
 
-instantiate :: (Parameterized a, TI m) => a -> m ([Type], a)
-instantiate a = do
-  ps <- params a
-  vs <- mapM (kindOf >=> newTVar) ps
-  a <- substitute vs a
-  return (vs, a)
+improveByInstances :: TI m => Constraint -> m ()
+improveByInstances = \case
+  CClass id args -> do
+    cls <- resolveUse' id
+    insts <- resolveUse @_ @[Instance] id
+    insts' <- forM insts $ \inst -> do
+      (_, inst') <- instantiate inst
+      return inst'
+    forM_ (cls^.fundeps) $ \(x :~> y) ->
+      forM_ insts' $ \inst' -> do
+        let t' = indexParams (cls^.parameters) (inst'^.arguments)
+        let t = indexParams (cls^.parameters) args
+        s <- runExceptT $ match @Type (t' x) (t x)
+        -- TODO: Once we found an instance, we don't need to search further instance anymore.
+        case s of
+          Right s -> zipWithM_ unify (apply s (t' y)) (t y)
+          Left _ -> return ()
+
+type PredicateCache = Map (Id ClassCon, Fundep Parameter, [Type]) [Type]
+
+improveByPredicates :: TI m => PredicateCache -> Constraint -> m PredicateCache
+improveByPredicates cache = \case
+  CClass id args -> do
+    cls <- resolveUse' id
+    let t = indexParams (cls^.parameters) args
+    foldM merge cache [((id, fundep, t x), t y) | fundep@(x :~> y) <- cls^.fundeps]
+ where
+  merge cache (k, v) = cache & at k %%~ \case
+    Just v' -> do
+      zipWithM_ unify v v'
+      return $ Just v'
+    Nothing -> return $ Just v
+
+buildPremise :: TI m => Constraint -> m Premise
+buildPremise p = Premise p <$> expand p
+ where
+  expand p = do
+    supers <- supers p
+    ps <- mapM expand supers
+    return (p : concat ps)
+  supers = \case
+    CClass id args -> do
+      cls <- resolveUse' id
+      cls <- substitute args cls
+      return (cls^.superclasses)
 
 quantify :: (Data a, TI m) => a -> m ([Parameter], Subst Type)
 quantify a = do
@@ -419,14 +501,21 @@ quantify a = do
   let s = Subst $ Map.fromList [(id, TGen (identity p)) | (id, p) <- params]
   return (map snd params, s)
 
+instantiate :: (Parameterized a, TI m) => a -> m ([Type], a)
+instantiate a = do
+  ps <- params a
+  vs <- mapM (kindOf >=> newTVar) ps
+  a <- substitute vs a
+  return (vs, a)
+
 class Parameterized a where
   params :: MonadError Error m => a -> m [Parameter]
   substitute :: MonadError Error m => [Type] -> a -> m a
 
   default substitute :: (Data a, MonadError Error m) => [Type] -> a -> m a
-  substitute tys a = do
+  substitute args a = do
     ps <- params a
-    let map = Map.fromList [(identity p, ty) | (p, ty) <- zip ps tys]
+    let map = Map.fromList [(identity p, ty) | (p, ty) <- zip ps args]
     return $ transformOn biplate ?? a $ \case
       TGen id | Just t <- map^.at id -> t
       t -> t
@@ -448,10 +537,15 @@ unify t1 t2 = do
   s' <- mgu (apply s t1) (apply s t2)
   subst %= extend s'
 
+(<:) :: TI m => Type -> Type -> m ()
+l <: r = void $ match @Type r l `catchError` \case
+  MatchFailed -> throwError $ CannotUnifyType l r SignatureTooGeneral
+  err -> throwError err
+
 newTVar :: (MonadReader Scope m, MonadState TIState m) => Kind -> m Type
 newTVar k = do
   lv <- view level
   typeIds %%= \ids -> (TVar (head ids) k lv, tail ids)
 
-newParameter :: (MonadState TIState m) => Kind -> m Parameter
+newParameter :: MonadState TIState m => Kind -> m Parameter
 newParameter k = parameterIds %%= \ids -> (Parameter (head ids) (Typed Inferred k), tail ids)
