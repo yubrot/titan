@@ -7,8 +7,8 @@ import qualified PrettyPrinterTest
 import qualified ParserTest
 import qualified BinderTest
 import qualified ResolverTest
-import qualified KITest
-import qualified TITest
+import qualified KindInferenceTest
+import qualified TypeInferenceTest
 import qualified PatternCheckerTest
 
 main :: IO ()
@@ -18,8 +18,8 @@ main = hspec $ do
   ParserTest.spec
   BinderTest.spec
   ResolverTest.spec
-  KITest.spec
-  TITest.spec
+  KindInferenceTest.spec
+  TypeInferenceTest.spec
   PatternCheckerTest.spec
   describe "std" $ do
     stdFiles <- runIO stdFiles

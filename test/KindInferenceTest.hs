@@ -1,4 +1,4 @@
-module KITest
+module KindInferenceTest
   ( spec
   ) where
 
@@ -16,7 +16,7 @@ code ==> result = forM_ [code, result] $ \code -> test code `shouldBe` Right res
 code ==>! f = test code `shouldSatisfy` \case Left e -> f e; _ -> False
 
 spec :: Spec
-spec = describe "Titan.KI" $ do
+spec = describe "Titan.KindInference" $ do
   it "data types" $ do
     ""
       ==> ""

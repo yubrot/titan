@@ -1,4 +1,4 @@
-module TITest
+module TypeInferenceTest
   ( spec
   ) where
 
@@ -16,7 +16,7 @@ code ==> result = forM_ [code, result] $ \code -> test code `shouldBe` Right res
 code ==>! f = test code `shouldSatisfy` \case Left e -> f e; _ -> False
 
 spec :: Spec
-spec = describe "Titan.TI" $ do
+spec = describe "Titan.TypeInference" $ do
   it "verify classes" $ do
     ""
       ==> ""
