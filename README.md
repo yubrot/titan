@@ -12,7 +12,7 @@ This implementation is based on the implementation of [Typing Haskell in Haskell
 * [x] Explicit kind signatures and scoped type variables
 * [x] Multi-parameter type classes
 * [x] Pattern exhaustiveness/useless checker
-* [ ] Functional dependencies
+* [x] Functional dependencies
 * [ ] Row polymorphism
 * [ ] Effects
 
@@ -110,6 +110,11 @@ class Ord a where Eq a {
   val compare : a -> a -> Ordering
 }
 
+class MonadState s m | m ~> s where Monad m {
+  val get : m s
+  val put : s -> m Unit
+}
+
 // instance
 instance Eq (Pair a b) where (Eq a, Eq b)
 
@@ -122,6 +127,8 @@ default {
 
 ## References
 
-- [Mark P Jones: Typing Haskell in Haskell](https://web.cecs.pdx.edu/~mpj/thih/)
+- [Mark P. Jones: Typing Haskell in Haskell](https://web.cecs.pdx.edu/~mpj/thih/)
 - [Didier Rémy: Extension of ML type system with a sorted equational theory on types](https://hal.inria.fr/inria-00077006/document)
 - [LUC MARANGET: Warnings for pattern matching](http://moscova.inria.fr/~maranget/papers/warn/index.html)
+- [Mark P. Jones: Language and Program Design for Functional Dependencies](https://web.cecs.pdx.edu/~mpj/pubs/fundeps-design.pdf)
+

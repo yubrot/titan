@@ -1,5 +1,6 @@
 module Titan.PrettyPrinter
   ( Pretty(..)
+  , PrettyFundeps(..)
   , PrettyContext(..)
   , PrettyQuantification(..)
   ) where
@@ -46,6 +47,19 @@ instance Pretty Parameter where
   pprintsPrec prec parameter = case parameter^.kind of
     Typed _ k -> paren (9 < prec) $ pprints (parameter^.ident) . raw " : " . pprints k
     _ -> pprints (parameter^.ident)
+
+instance Pretty (Fundep a) where
+  pprintsPrec _ (as :~> bs) = p as . raw " ~> " . p bs
+   where
+    p [] = id
+    p (x:xs) = cat " " 0 x 0 xs
+
+newtype PrettyFundeps a = PrettyFundeps [Fundep a]
+
+instance Pretty (PrettyFundeps a) where
+  pprintsPrec _ (PrettyFundeps fundeps) = case fundeps of
+    [] -> id
+    d:ds -> raw " | " . cat ", " 0 d 0 ds
 
 instance Pretty Constraint where
   pprintsPrec prec = \case
@@ -114,7 +128,7 @@ instance Pretty LocalDef where
 
 instance Pretty Alt where
   pprintsPrec prec ((p :| ps) :-> body) =
-    cat " " 10 p 10 ps .  raw " -> " .  pprintsPrec prec body
+    cat " " 10 p 10 ps . raw " -> " . pprintsPrec prec body
 
 instance Pretty Value where
   pprintsPrec _ = \case
@@ -146,6 +160,7 @@ instance Pretty DataValueCon where
 instance Pretty ClassCon where
   pprintsPrec _ cls =
     raw "class " . cat " " 0 (cls^.ident) 10 (cls^.parameters) .
+    (pprints . PrettyFundeps) (cls^.fundeps) .
     (pprints . PrettyContext) (cls^.superclasses)
 
 instance Pretty ClassMethod where

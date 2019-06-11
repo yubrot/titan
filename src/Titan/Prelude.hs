@@ -6,6 +6,7 @@ module Titan.Prelude
   , module Control.Monad
   , module Control.Monad.Except
   , module Control.Monad.Reader
+  , module Control.Monad.Writer
   , module Control.Monad.State
   , module Data.Data
   , module Data.Either
@@ -18,6 +19,8 @@ module Titan.Prelude
   , module Data.Void
   , module Debug.Trace
   , modifyM
+  , whenM
+  , unlessM
   , nubOrd
   ) where
 
@@ -28,6 +31,7 @@ import Control.Lens hiding (Level)
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Reader
+import Control.Monad.Writer hiding (Alt)
 import Control.Monad.State
 import Data.Data hiding (DataType, typeOf)
 import Data.Either
@@ -43,6 +47,16 @@ import qualified Data.Set as Set
 
 modifyM :: MonadState s m => (s -> m s) -> m ()
 modifyM f = get >>= f >>= put
+
+whenM :: Monad m => m Bool -> m () -> m ()
+whenM cond body = do
+  r <- cond
+  when r body
+
+unlessM :: Monad m => m Bool -> m () -> m ()
+unlessM cond body = do
+  r <- cond
+  unless r body
 
 nubOrd :: Ord a => [a] -> [a]
 nubOrd = go mempty

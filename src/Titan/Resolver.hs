@@ -45,6 +45,9 @@ instance JustifyUse TypeCon where
 instance JustifyUse Parameter where
   justifyUse (Parameter id kind) = Parameter id <$> justifyUse kind
 
+instance JustifyUse (Fundep a) where
+  justifyUse = pure
+
 instance JustifyUse Constraint where
   justifyUse = \case
     CClass id ts -> CClass <$> justifyUse id <*> justifyUse ts
@@ -124,12 +127,13 @@ instance JustifyUse DataValueCon where
     return $ DataValueCon id fields
 
 instance JustifyUse Class where
-  justifyUse (ClassCon id params supers, cms) = do
+  justifyUse (ClassCon id params fundeps supers, cms) = do
     params <- justifyUse params
+    fundeps <- justifyUse fundeps
     supers <- justifyUse supers
-    scoped params $ verifyNoFreeParams supers
+    scoped params $ verifyNoFreeParams (fundeps, supers)
     cms <- scoped params $ justifyUse cms
-    return (ClassCon id params supers, cms)
+    return (ClassCon id params fundeps supers, cms)
 
 instance JustifyUse ClassMethod where
   justifyUse (ClassMethod id scheme body) = do

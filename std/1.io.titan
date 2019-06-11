@@ -1,0 +1,14 @@
+data IO a
+
+val putChar : Char -> IO Unit
+val putStr : List Char -> IO Unit
+val putStrLn : List Char -> IO Unit
+val print : a -> IO Unit where Show a
+
+val getChar : IO Char
+val getLine : IO (List Char)
+val getContents : IO (List Char)
+
+val readFile : List Char -> IO (List Char)
+val writeFile : List Char -> List Char -> IO Unit
+val appendFile : List Char -> List Char -> IO Unit

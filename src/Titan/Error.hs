@@ -18,9 +18,13 @@ data Error
   | ArityMismatch Arity Arity
   | MatchFailed
   | CyclicClasses [Name]
+  | FundepsAreWeakerThanSuperclasses ClassCon (Fundep Parameter)
   | OverlappingInstances Instance Instance
+  | CoverageConditionUnsatisfied Instance (Fundep Parameter)
+  | ConsistencyConditionUnsatisfied Instance Instance (Fundep Parameter)
   | NoMatchingInstances [Constraint] Constraint
-  | CannotResolveAmbiguity Name [Constraint]
+  | InstanceResolutionExhausted Constraint
+  | CannotResolveAmbiguity (Id Type) [Constraint]
   | UselessPattern String
   | NonExhaustivePattern [String]
   deriving (Eq, Ord, Data, Typeable)
@@ -43,9 +47,13 @@ instance Show Error where
     ArityMismatch expected actual -> "Arity mismatch: expected " ++ show expected ++ " arguments but got " ++ show actual
     MatchFailed -> "Cannot match type"
     CyclicClasses classes -> "Cyclic classes: " ++ foldr1 (\a b -> a ++ ", " ++ b) classes
+    FundepsAreWeakerThanSuperclasses cls fundep -> "Functional dependencies are weaker than superclasses: " ++ pprint cls ++ " should have a functional dependency stricter than " ++ pprint fundep
     OverlappingInstances a b -> "Overlapping instances: " ++ pprint a ++ " and " ++ pprint b
+    CoverageConditionUnsatisfied inst fundep -> "Coverage condition unsatisfied for " ++ pprint fundep ++ ": " ++ pprint inst
+    ConsistencyConditionUnsatisfied a b fundep -> "Consistency condition unsatisfied for " ++ pprint fundep ++ ": " ++ pprint a ++ " and " ++ pprint b
     NoMatchingInstances ps p -> "No matching instances for " ++ pprint p ++ pprint (PrettyContext ps)
-    CannotResolveAmbiguity a ps -> "Cannot resolve ambiguity for " ++ a ++ pprint (PrettyContext ps)
+    InstanceResolutionExhausted p -> "Instance resolution exhausted for " ++ pprint p
+    CannotResolveAmbiguity a ps -> "Cannot resolve ambiguity for _" ++ pprint a ++ pprint (PrettyContext ps)
     UselessPattern p -> "Useless pattern: " ++ p
     NonExhaustivePattern ps -> "Non exhaustive pattern: " ++ foldr1 (\a b -> a ++ " | " ++ b) ps
 

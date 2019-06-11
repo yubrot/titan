@@ -134,6 +134,10 @@ spec = describe "Titan.TypeInference" $ do
       ==> "val any : [(a : Type)] a val f : [(d : Type)] d = (fun (Pair x _) -> x) g val g : [(b : Type) (c : Type)] Pair b c = Pair f any data Pair (x : Type) (y : Type) { con Pair x y }"
     "val f = fun (Cons x _) -> x data List x { con Cons x (List x) }"
       ==> "val f : [(a : Type)] List a -> a = fun (Cons x _) -> x data List (x : Type) { con Cons x (List x) }"
+    "val f = fun x -> show (Pair x x) val show : x -> String where Show x data Pair x y { con Pair x y } data String class Show x"
+      ==> "val f : [(a : Type)] a -> String where Show (Pair a a) = fun x -> show (Pair x x) val show : [(x : Type)] x -> String where Show x data Pair (x : Type) (y : Type) { con Pair x y } data String class Show (x : Type)"
+    "val f = fun x -> show (Pair x x) val show : x -> String where Show x data Pair x y { con Pair x y } data String class Show x instance Show (Pair x y) where (Show x, Show y)"
+      ==> "val f : [(a : Type)] a -> String where Show a = fun x -> show (Pair x x) val show : [(x : Type)] x -> String where Show x data Pair (x : Type) (y : Type) { con Pair x y } data String class Show (x : Type) instance [(x : Type) (y : Type)] Show (Pair x y) where (Show x, Show y)"
   it "explicit defs" $ do
     "val f : a = f"
       ==> "val f : [(a : Type)] a = f"
@@ -170,7 +174,7 @@ spec = describe "Titan.TypeInference" $ do
       ==> "val any : [(x : Type)] x val f : [(a : Type) (b : Type)] a -> b = fun x -> let g : [(c : Type)] a -> c = fun y -> any in g x"
     -- NoMonoLocalBinds
     "val f : x -> y -> y where F x y val g = fun a -> let h = fun b -> f a b in Pair (h 0) (h 'a') data Char data Pair x y { con Pair x y } class F x y class Num x"
-      ==> "val f : [(x : Type) (y : Type)] x -> y -> y where F x y val g : [(b : Type) (c : Type)] b -> Pair c Char where (F b c, Num c, F b Char) = fun a -> let h : [(a : Type)] a -> a where F b a = fun b -> f a b in Pair (h 0) (h 'a') data Char data Pair (x : Type) (y : Type) { con Pair x y } class F (x : Type) (y : Type) class Num (x : Type)"
+      ==> "val f : [(x : Type) (y : Type)] x -> y -> y where F x y val g : [(b : Type) (c : Type)] b -> Pair c Char where (F b Char, F b c, Num c) = fun a -> let h : [(a : Type)] a -> a where F b a = fun b -> f a b in Pair (h 0) (h 'a') data Char data Pair (x : Type) (y : Type) { con Pair x y } class F (x : Type) (y : Type) class Num (x : Type)"
     "val f = fun x -> let g = fun y z -> S (T x y) z in g 'a' data Char data S x y { con S x y } data T x { con T x x }"
       ==> "val f : [(b : Type)] Char -> b -> S (T Char) b = fun x -> let g : [(a : Type)] Char -> a -> S (T Char) a = fun y z -> S (T x y) z in g 'a' data Char data S (x : Type) (y : Type) { con S x y } data T (x : Type) { con T x x }"
     "val f = fun x -> let g : a -> b -> S (T a) b = fun y z -> S (T x y) z in g 'a' data Char data S x y { con S x y } data T x { con T x x }"
@@ -180,12 +184,16 @@ spec = describe "Titan.TypeInference" $ do
       ==> "class F { val f : [(a : Type)] a }"
     "val g = f class F { val f : a }"
       ==>! \case NoMatchingInstances _ _ -> True; _ -> False
+    "val g = f class F { val f : a } instance F"
+      ==> "val g : [(b : Type)] b = f class F { val f : [(a : Type)] a } instance [] F"
     "val g : a = f class F { val f : a }"
       ==>! \case NoMatchingInstances _ _ -> True; _ -> False
     "val g : a where F = f class F { val f : a }"
       ==> "val g : [(a : Type)] a where F = f class F { val f : [(a : Type)] a }"
     "val g = f class F a { val f : a }"
       ==> "val g : [(b : Type)] b where F b = f class F (a : Type) { val f : [] a }"
+    "val g = f class F a { val f : a } instance F a"
+      ==> "val g : [(b : Type)] b = f class F (a : Type) { val f : [] a } instance [(a : Type)] F a"
     "val g = f class F a { val f : a -> b }"
       ==> "val g : [(c : Type) (d : Type)] c -> d where F c = f class F (a : Type) { val f : [(b : Type)] a -> b }"
     "data Char class F a { val f : Char = 'a' }"
@@ -213,7 +221,7 @@ spec = describe "Titan.TypeInference" $ do
       ==> "val f : [(a : Type)] a where Num a = f class Num (x : Type)"
     "val f : a where Num a = 0 class Num x"
       ==> "val f : [(a : Type)] a where Num a = 0 class Num (x : Type)"
-    "val f : a where Fractional a = 0 class Fractional x"
+    "val f : a where Fractional a = 0 class Fractional x class Num x"
       ==>! \case NoMatchingInstances _ _ -> True; _ -> False
     "val f : a where Fractional a = 0 class Fractional x where Num x class Num x"
       ==> "val f : [(a : Type)] a where Fractional a = 0 class Fractional (x : Type) where Num x class Num (x : Type)"
@@ -222,7 +230,7 @@ spec = describe "Titan.TypeInference" $ do
     "val f : T = 0 data T class Num x instance Num a"
       ==> "val f : [] T = 0 data T class Num (x : Type) instance [(a : Type)] Num a"
     "val f : T = 0 data T class Num x instance Num a where Num a"
-      ==>! \case NoMatchingInstances _ _ -> True; _ -> False
+      ==>! \case InstanceResolutionExhausted _ -> True; _ -> False
     "val f : Pair T a = 0 data Pair x y { con Pair x y } data T class Num x instance Num (Pair x y)"
       ==> "val f : [(a : Type)] Pair T a = 0 data Pair (x : Type) (y : Type) { con Pair x y } data T class Num (x : Type) instance [(x : Type) (y : Type)] Num (Pair x y)"
     "val f : Pair T a = 0 data Pair x y { con Pair x y } data T class Num x instance Num (Pair x y) where (Num x, Num y)"
@@ -241,7 +249,7 @@ spec = describe "Titan.TypeInference" $ do
     "val f = (fun (Pair x _) -> x) g val g = Pair f 0 data Int data Pair x y { con Pair x y } class Num x default { Int }"
       ==>! \case CannotResolveAmbiguity _ _ -> True; _ -> False
     "val f = (fun (Pair x _) -> x) g val g = Pair f 0 data Int data Pair x y { con Pair x y } class Num x instance Num Int default { Int }"
-      ==> "val f : [(a : Type)] a = (fun (Pair x _) -> x) g val g : [(b : Type) (c : Type)] Pair c b where Num b = Pair f 0 data Int data Pair (x : Type) (y : Type) { con Pair x y } class Num (x : Type) instance [] Num Int default { Int }"
+      ==> "val f : [(a : Type)] a = (fun (Pair x _) -> x) g val g : [(b : Type) (c : Type)] Pair b c where Num c = Pair f 0 data Int data Pair (x : Type) (y : Type) { con Pair x y } class Num (x : Type) instance [] Num Int default { Int }"
     "val f = (fun (Pair x _) -> incr x) g val g = Pair f 0 data Int data Pair x y { con Pair x y } class Num x { val incr : x -> x } instance Num Int default { Int }"
       ==> "val f : [(a : Type)] a where Num a = (fun (Pair x _) -> incr x) g val g : [(b : Type) (c : Type)] Pair b c where (Num b, Num c) = Pair f 0 data Int data Pair (x : Type) (y : Type) { con Pair x y } class Num (x : Type) { val incr : [] x -> x } instance [] Num Int default { Int }"
     "val h : Char -> Char = fun x -> g (f x) val f : Char -> a where C a val g : a -> Char where C a data Char class C x"
@@ -249,9 +257,92 @@ spec = describe "Titan.TypeInference" $ do
     "val f val g = f h class Functor f { val h : f x }"
       ==>! \case CannotResolveAmbiguity _ _ -> True; _ -> False
     -- FIXME: This should be resolvable:
-    "val f val g = f h class Functor f { val h : f x } instance Functor f"
+    "val f val g = f h data Maybe t class Functor f { val h : f x } instance Functor Maybe"
       ==>! \case CannotResolveAmbiguity _ _ -> True; _ -> False
     "val f val g = f h data Maybe t class Functor f { val h : f x } instance Functor Maybe default { Maybe }"
       ==> "val f : [(a : Type)] a val g : [(b : Type)] b = f h data Maybe (t : Type) class Functor (f : Type -> Type) { val h : [(x : Type)] f x } instance [] Functor Maybe default { Maybe }"
     "val f val g = f h data Int data Maybe t class Functor f { val h : f x } instance Functor Maybe default { Int Maybe }"
       ==> "val f : [(a : Type)] a val g : [(b : Type)] b = f h data Int data Maybe (t : Type) class Functor (f : Type -> Type) { val h : [(x : Type)] f x } instance [] Functor Maybe default { Int Maybe }"
+  it "verify classes with functional dependencies" $ do
+    "class F a b | a ~> b"
+      ==> "class F (a : Type) (b : Type) | a ~> b"
+    "class F a b | a ~> b class G a b where F a b"
+      ==>! \case FundepsAreWeakerThanSuperclasses _ _ -> True; _ -> False
+    "class F a b | a ~> b class G a b | a ~> b where F a b"
+      ==> "class F (a : Type) (b : Type) | a ~> b class G (a : Type) (b : Type) | a ~> b where F a b"
+    "class F a b | a ~> b class G a b c | a c ~> b where F a b"
+      ==>! \case FundepsAreWeakerThanSuperclasses _ _ -> True; _ -> False
+    "class F a b c | a b ~> c class G a b c | a ~> c where F a b c"
+      ==> "class F (a : Type) (b : Type) (c : Type) | a b ~> c class G (a : Type) (b : Type) (c : Type) | a ~> c where F a b c"
+    "class F a b c | a b ~> c class G a b | a ~> b where F a b b"
+      ==> "class F (a : Type) (b : Type) (c : Type) | a b ~> c class G (a : Type) (b : Type) | a ~> b where F a b b"
+    "class F a b | a ~> b class G b a | a ~> b where F b a"
+      ==>! \case FundepsAreWeakerThanSuperclasses _ _ -> True; _ -> False
+    "class F a b c | a ~> b class G a b c | a ~> b c where F a c b"
+      ==> "class F (a : Type) (b : Type) (c : Type) | a ~> b class G (a : Type) (b : Type) (c : Type) | a ~> b c where F a c b"
+    "class F a b c | a ~> b c class G a b c | a ~> b where F a b c"
+      ==>! \case FundepsAreWeakerThanSuperclasses _ _ -> True; _ -> False
+  it "verify instances with functional dependencies" $ do
+    "class F a b instance F a b"
+      ==> "class F (a : Type) (b : Type) instance [(a : Type) (b : Type)] F a b"
+    "data A data B class F a b | a ~> b instance F A B"
+      ==> "data A data B class F (a : Type) (b : Type) | a ~> b instance [] F A B"
+    "data A data B class F a b | a ~> b instance F a b"
+      ==>! \case CoverageConditionUnsatisfied _ _ -> True; _ -> False
+    "data T a class F a b | a ~> b instance F (T a) a"
+      ==> "data T (a : Type) class F (a : Type) (b : Type) | a ~> b instance [(a : Type)] F (T a) a"
+    "data T a class F a b | a ~> b instance F a (T a)"
+      ==> "data T (a : Type) class F (a : Type) (b : Type) | a ~> b instance [(a : Type)] F a (T a)"
+    "data A class F a b | a ~> b instance F a A"
+      ==> "data A class F (a : Type) (b : Type) | a ~> b instance [(a : Type)] F a A"
+    "data A class F a b | a ~> b instance F A a"
+      ==>! \case CoverageConditionUnsatisfied _ _ -> True; _ -> False
+    "data T a class F a b | a ~> b instance F (T x) y where F x y"
+      ==> "data T (a : Type) class F (a : Type) (b : Type) | a ~> b instance [(x : Type) (y : Type)] F (T x) y where F x y"
+    "class F a b | a ~> b instance F x y where F x x"
+      ==>! \case CoverageConditionUnsatisfied _ _ -> True; _ -> False
+    "data A data B class F a b | a ~> b instance F A A instance F B A"
+      ==> "data A data B class F (a : Type) (b : Type) | a ~> b instance [] F A A instance [] F B A"
+    "data A data B class F a b | a ~> b instance F A A instance F A B"
+      ==>! \case ConsistencyConditionUnsatisfied _ _ _ -> True; _ -> False
+    "data A data B data T a b class F a b c | a ~> b instance F (T a b) a A instance F (T a b) a B"
+      ==> "data A data B data T (a : Type) (b : Type) class F (a : Type) (b : Type) (c : Type) | a ~> b instance [(a : Type) (b : Type)] F (T a b) a A instance [(a : Type) (b : Type)] F (T a b) a B"
+    "data A data B data T a b class F a b c | a ~> b instance F (T a b) a A instance F (T a b) b B"
+      ==>! \case ConsistencyConditionUnsatisfied _ _ _ -> True; _ -> False
+    "data Float data Int class Add a b c | a b ~> c instance Add Float Float Float instance Add Float Int Float instance Add Int Float Float instance Add Int Int Int"
+      ==> "data Float data Int class Add (a : Type) (b : Type) (c : Type) | a b ~> c instance [] Add Float Float Float instance [] Add Float Int Float instance [] Add Int Float Float instance [] Add Int Int Int"
+    "data Float data Int class Add a b c | a b ~> c instance Add Float Float Float instance Add Float Int Float instance Add Int Float Float instance Add Int Int Int instance Add Int Int Float"
+      ==>! \case ConsistencyConditionUnsatisfied _ _ _ -> True; _ -> False
+  it "improving inferred types with functional dependencies" $ do
+    "val g = f A data A { con A } data B class F x y { val f : x -> y } instance F A B"
+      ==> "val g : [(a : Type)] a where F A a = f A data A { con A } data B class F (x : Type) (y : Type) { val f : [] x -> y } instance [] F A B"
+    "val g = f A data A { con A } data B class F x y | x ~> y { val f : x -> y } instance F A B"
+      ==> "val g : [] B = f A data A { con A } data B class F (x : Type) (y : Type) | x ~> y { val f : [] x -> y } instance [] F A B"
+    "val g = f (f A) data A { con A } data B data C class F a b { val f : a -> b } instance F A B instance F B C"
+      ==>! \case CannotResolveAmbiguity _ _ -> True; _ -> False
+    "val g = fun x -> f (f x) class F x y { val f : x -> y }"
+      ==>! \case CannotResolveAmbiguity _ _ -> True; _ -> False
+    "val g = f (f A) data A { con A } data B data C class F a b | a ~> b { val f : a -> b } instance F A B instance F B C"
+      ==> "val g : [] C = f (f A) data A { con A } data B data C class F (a : Type) (b : Type) | a ~> b { val f : [] a -> b } instance [] F A B instance [] F B C"
+    "val g = fun x -> f (f x) class F x y | x ~> y { val f : x -> y }"
+      ==> "val g : [(a : Type) (b : Type) (c : Type)] a -> b where (F a c, F c b) = fun x -> f (f x) class F (x : Type) (y : Type) | x ~> y { val f : [] x -> y }"
+    "val g = fun a b c d -> f (f a d) (f b c) class F x y z | x y ~> z { val f : x -> y -> z }"
+      ==> "val g : [(a : Type) (b : Type) (c : Type) (d : Type) (e : Type) (f : Type) (g : Type)] a -> b -> c -> d -> e where (F a d f, F b c g, F f g e) = fun a b c d -> f (f a d) (f b c) class F (x : Type) (y : Type) (z : Type) | x y ~> z { val f : [] x -> y -> z }"
+    "val g = fun x -> Pair (f x) (f x) data Pair x y { con Pair x y } class F x y { val f : x -> y }"
+      ==> "val g : [(a : Type) (b : Type) (c : Type)] a -> Pair b c where (F a b, F a c) = fun x -> Pair (f x) (f x) data Pair (x : Type) (y : Type) { con Pair x y } class F (x : Type) (y : Type) { val f : [] x -> y }"
+    "val g = fun x -> Pair (f x) (f x) data Pair x y { con Pair x y } class F x y | x ~> y { val f : x -> y }"
+      ==> "val g : [(a : Type) (b : Type)] a -> Pair b b where F a b = fun x -> Pair (f x) (f x) data Pair (x : Type) (y : Type) { con Pair x y } class F (x : Type) (y : Type) | x ~> y { val f : [] x -> y }"
+    "val g = f A data A { con A } data B class F a b { val f : a -> b } class G a b | a ~> b instance F a b where G a b instance G A B"
+      ==> "val g : [] B = f A data A { con A } data B class F (a : Type) (b : Type) { val f : [] a -> b } class G (a : Type) (b : Type) | a ~> b instance [(a : Type) (b : Type)] F a b where G a b instance [] G A B"
+    "val g = f class F x y { val f : x -> y } class G x y | x ~> y instance F x y where G x y"
+      ==> "val g : [(a : Type) (b : Type)] a -> b where G a b = f class F (x : Type) (y : Type) { val f : [] x -> y } class G (x : Type) (y : Type) | x ~> y instance [(x : Type) (y : Type)] F x y where G x y"
+    "val g : a -> b where G a b = f class F x y { val f : x -> y } class G x y | x ~> y instance F x y where G x y"
+      ==> "val g : [(a : Type) (b : Type)] a -> b where G a b = f class F (x : Type) (y : Type) { val f : [] x -> y } class G (x : Type) (y : Type) | x ~> y instance [(x : Type) (y : Type)] F x y where G x y"
+    "val g = fun x y -> Pair (f x y) (f x y) data A { con A } data Pair x y { con Pair x y } class F x y z { val f : z -> x -> y } class G x y | x ~> y instance F x y A where G x y"
+      ==> "val g : [(a : Type) (b : Type) (c : Type) (d : Type)] a -> b -> Pair c d where (F b c a, F b d a) = fun x y -> Pair (f x y) (f x y) data A { con A } data Pair (x : Type) (y : Type) { con Pair x y } class F (x : Type) (y : Type) (z : Type) { val f : [] z -> x -> y } class G (x : Type) (y : Type) | x ~> y instance [(x : Type) (y : Type)] F x y A where G x y"
+    "val g = fun x y -> Pair (f x y) (f x y) val h = g A data A { con A } data Pair x y { con Pair x y } class F x y z { val f : z -> x -> y } class G x y | x ~> y instance F x y A where G x y"
+      ==> "val g : [(a : Type) (b : Type) (c : Type) (d : Type)] a -> b -> Pair c d where (F b c a, F b d a) = fun x y -> Pair (f x y) (f x y) val h : [(e : Type) (f : Type)] e -> Pair f f where G e f = g A data A { con A } data Pair (x : Type) (y : Type) { con Pair x y } class F (x : Type) (y : Type) (z : Type) { val f : [] z -> x -> y } class G (x : Type) (y : Type) | x ~> y instance [(x : Type) (y : Type)] F x y A where G x y"
+    "val g = Pair (f A) (f A) data A { con A } data Pair x y { con Pair x y } class F x y { val f : x -> y }"
+      ==> "val g : [(a : Type) (b : Type)] Pair a b where (F A a, F A b) = Pair (f A) (f A) data A { con A } data Pair (x : Type) (y : Type) { con Pair x y } class F (x : Type) (y : Type) { val f : [] x -> y }"
+    "val g = Pair (f A) (f A) data A { con A } data Pair x y { con Pair x y } class F x y | x ~> y { val f : x -> y }"
+      ==> "val g : [(a : Type)] Pair a a where F A a = Pair (f A) (f A) data A { con A } data Pair (x : Type) (y : Type) { con Pair x y } class F (x : Type) (y : Type) | x ~> y { val f : [] x -> y }"

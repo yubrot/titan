@@ -73,6 +73,12 @@ data Parameter = Parameter
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
+data Fundep a = (:~>)
+  { _given :: [Id a]
+  , _determines :: [Id a]
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
+
 data Constraint
   = CClass (Id ClassCon) [Type]
   deriving (Eq, Ord, Show, Data, Typeable)
@@ -173,6 +179,7 @@ data DataValueCon = DataValueCon
 data ClassCon = ClassCon
   { _ident :: Id ClassCon
   , _parameters :: [Parameter]
+  , _fundeps :: [Fundep Parameter]
   , _superclasses :: [Constraint]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
@@ -214,6 +221,7 @@ makeFieldsNoPrefix ''Typing
 makeFieldsNoPrefix ''Id
 makeFieldsNoPrefix ''Level
 makeFieldsNoPrefix ''Parameter
+makeFieldsNoPrefix ''Fundep
 makeFieldsNoPrefix ''Scheme
 makeFieldsNoPrefix ''PatternDef
 makeFieldsNoPrefix ''LocalDef

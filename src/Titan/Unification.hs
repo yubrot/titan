@@ -5,6 +5,7 @@ module Titan.Unification
   , extend
   , occurs
   , apply
+  , worthApply
   , vars
   , mgu
   , match
@@ -38,6 +39,9 @@ occurs id a = id `elem` vars topLevel a
 
 apply :: (Substitutable a, Data t) => Subst a -> t -> t
 apply subst = over biplate (apply' subst)
+
+worthApply :: Subst a -> Set (Id a) -> Bool
+worthApply (Subst map) set = not (Map.keysSet map `Set.disjoint` set)
 
 vars :: forall a t. (Substitutable a, Data t) => Level -> t -> Set (Id a)
 vars lv = view (biplate.to (vars' lv))
@@ -130,8 +134,8 @@ instance Match Type where
     (TVar id k lv, t) -> do
       k' <- kindOf t
       when (k /= k') $ throwError MatchFailed
-      let outerVars = [id' | TVar id' _ lv' <- universe t, isOnLevel (upLevel lv) lv']
-      unless (null outerVars) $ throwError MatchFailed
+      let adjustRequiredVars = [id' | TVar id' _ lv' <- universe t, isOnLevel (upLevel lv) lv']
+      unless (null adjustRequiredVars) $ throwError MatchFailed
       return $ id +-> t
     (a, b) -> do
       when (a /= b) $ throwError MatchFailed
