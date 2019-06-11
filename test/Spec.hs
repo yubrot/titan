@@ -30,9 +30,7 @@ testStd _ [] = return ()
 testStd global ((path, code):rest) = do
   let parse' = parse @Program path
       bind' = bind global
-      test f code = case (parse' >=> bind' >=> f) code of
-        Left e -> expectationFailure $ show e
-        Right r -> (parse' >=> bind' >=> f) (pprint (program r)) `shouldBe` Right r
+      test f code = (parse' >=> bind' >=> f) code `shouldSatisfy` isRight
 
   describe path $ do
     it "parse" $ parse' code `shouldSatisfy` isRight

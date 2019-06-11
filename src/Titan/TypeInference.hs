@@ -410,21 +410,23 @@ buildEntailment premises p = build 0 p
                 throwError $ InternalError "TI" "There exists overlapping instances"
 
 updateEntailment :: (TI m, MonadWriter [Entailment] m) => [Premise] -> Subst Type -> Entailment -> m Entailment
-updateEntailment premises s e = update e
+updateEntailment premises s entail = update entail
  where
-  update e = if
-    | worthApply s (e^.wantVars) -> do
-        let p = apply s (e^.constraint)
-        e' <- case e^.resolvedInstance of
+  update entail = if
+    | worthApply s (entail^.wantVars) -> do
+        let p = apply s (entail^.constraint)
+        entail' <- case entail^.resolvedInstance of
           Just (ResolvedInstanceByEnv inst args es) -> do
             es <- mapM update es
             return $ produceEntailment p $ Just $ ResolvedInstanceByEnv inst args es
-          _ ->
+          Just (ResolvedInstanceByPremise _) ->
+            return entail
+          Nothing ->
             buildEntailment premises p
-        when (e /= e') $ tell [e']
-        return e'
+        when (entail /= entail') $ tell [entail']
+        return entail'
     | otherwise ->
-        return e
+        return entail
 
 produceEntailment :: Constraint -> Maybe ResolvedInstance -> Entailment
 produceEntailment p ri = Entailment p ri allVars allComplete
