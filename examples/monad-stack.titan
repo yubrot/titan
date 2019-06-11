@@ -1,0 +1,14 @@
+// val m n = do
+//   a <- ask
+//   b <- get
+//   let c = add a b
+//   put c
+//   tell (c : n : [])
+
+dump(type)
+val m = fun n ->
+  bind ask (fun a ->
+    bind get (fun b ->
+      let c = add a b in
+      bind (put c) (fun _ ->
+        tell (Cons c (Cons n Nil)))))
