@@ -11,7 +11,7 @@ main = do
   stdFiles <- stdFiles
   argFiles <- argFiles
   case foldM analyze emptyGlobal (stdFiles ++ argFiles) of
-    Right _ -> return ()
+    Right g -> mapM_ (putStrLn . pprint) (dump g)
     Left e -> hPutStrLn stderr $ show e
 
 analyze :: Global -> (String, String) -> Either Error Global

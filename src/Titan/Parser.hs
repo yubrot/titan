@@ -214,6 +214,12 @@ inst = Instance <$ reserved "instance" <*> inferrable quantification <*> classCo
 dflt :: Parser Default
 dflt = Default <$ reserved "default" <*> items (ty F)
 
+dumpType :: Parser DumpType
+dumpType = option DumpEverything $ parens $ choice
+  [ DumpTypeSignature <$ reserved "type"
+  , DumpKindSignature <$ reserved "kind"
+  ]
+
 decl :: Parser Decl
 decl = choice
   [ DDef <$ reserved "val" <*> def
@@ -221,6 +227,7 @@ decl = choice
   , DClass <$> classCon <*> items classMethod
   , DInstance <$> inst
   , DDefault <$> dflt
+  , DDump <$ reserved "dump" <*> dumpType <*> decl
   ]
 
 items :: Parser a -> Parser [a]
@@ -234,7 +241,7 @@ program = Program <$> many decl
 ------
 
 reservedWords :: [Name]
-reservedWords = ["let", "fun", "in", "val", "con", "data", "class", "instance", "default", "where"]
+reservedWords = ["let", "fun", "in", "val", "con", "data", "class", "instance", "default", "where", "dump"]
 
 amb :: Parser ()
 amb = L.space (void C.spaceChar) lineComment blockComment

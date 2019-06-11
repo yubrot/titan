@@ -182,6 +182,12 @@ instance Pretty Default where
     raw "default" .
     items (d^.candidates)
 
+instance Pretty DumpType where
+  pprintsPrec _ = \case
+    DumpEverything -> id
+    DumpTypeSignature -> raw "(type)"
+    DumpKindSignature -> raw "(kind)"
+
 instance Pretty Decl where
   pprintsPrec _ = \case
     DDef d -> pprints d
@@ -189,6 +195,7 @@ instance Pretty Decl where
     DClass c vs -> pprints c . items vs
     DInstance c -> pprints c
     DDefault d -> pprints d
+    DDump dt d -> raw "dump" . pprints dt . raw " " . pprints d
 
 instance Pretty Program where
   pprintsPrec _ program = case program^.decls of

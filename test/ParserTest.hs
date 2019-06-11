@@ -153,6 +153,8 @@ spec = describe "Titan.Parser" $ do
   it "Decl" $ do
     test "val show : a -> String where Show a"
       `shouldBe` Right (DDef (Def (Id "show") (Typed Explicit $ Scheme Untyped (var "a" --> con "String" []) [con "Show" [var "a"]]) Nothing))
+    test "dump val show"
+      `shouldBe` Right (DDump DumpEverything (DDef (Def (Id "show") Untyped Nothing)))
     test "data List a {\n  con Cons a (List a)\n  con Nil\n}"
       `shouldBe` Right (DData (DataTypeCon (Id "List") [var "a"]) [DataValueCon (Id "Cons") [var "a", con "List" [var "a"]], DataValueCon (Id "Nil") []])
     test "class Partial"

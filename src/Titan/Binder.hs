@@ -44,6 +44,9 @@ bindDecl = \case
     modifyM $ defaultTypes %%~ \case
       Nothing -> return $ Just d
       Just _ -> throwError MultipleDefault
+  DDump dt d -> do
+    dumps <>= [(dt, d)]
+    bindDecl d
 
 bindOn :: (At s, Index s ~ Id k, IxValue s ~ a, Bind m) => Lens' Global s -> Id k -> a -> m ()
 bindOn l id a = modifyM $ l.at id %%~ \case

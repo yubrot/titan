@@ -11,6 +11,7 @@ module Titan.Prelude
   , module Data.Data
   , module Data.Either
   , module Data.Foldable
+  , module Data.Function
   , module Data.List.NonEmpty
   , module Data.Map
   , module Data.Maybe
@@ -34,6 +35,7 @@ import Control.Monad.State
 import Data.Data hiding (DataType, typeOf)
 import Data.Either
 import Data.Foldable
+import Data.Function
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import Data.Maybe

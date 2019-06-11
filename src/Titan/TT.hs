@@ -204,12 +204,19 @@ data Default = Default
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
+data DumpType
+  = DumpEverything
+  | DumpTypeSignature
+  | DumpKindSignature
+  deriving (Eq, Ord, Show, Data, Typeable)
+
 data Decl
   = DDef Def
   | DData DataTypeCon [DataValueCon]
   | DClass ClassCon [ClassMethod]
   | DInstance Instance
   | DDefault Default
+  | DDump DumpType Decl
   deriving (Eq, Ord, Show, Data, Typeable)
 
 newtype Program = Program

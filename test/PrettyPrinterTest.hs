@@ -139,6 +139,8 @@ spec = describe "Titan.PrettyPrinter" $ do
       `shouldBe` "val Id = fun x -> x"
     test (DData (DataTypeCon (Id "List") [var "a"]) [])
       `shouldBe` "data List a"
+    test (DDump DumpEverything (DData (DataTypeCon (Id "List") [var "a"]) []))
+      `shouldBe` "dump data List a"
     test (DData (DataTypeCon (Id "Free") [Parameter (Id "f") (Typed Explicit $ KType --> KType), Parameter (Id "a") Untyped]) [])
       `shouldBe` "data Free (f : Type -> Type) a"
     test (DData (DataTypeCon (Id "List") [var "a"]) [DataValueCon (Id "Cons") [var "a", con "List" [var "a"]], DataValueCon (Id "Nil") []])

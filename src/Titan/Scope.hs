@@ -20,11 +20,12 @@ data Global = Global
   , _values :: Map (Id Value) Value
   , _dataValueAssocs :: Map (Id DataValueCon) (Id DataTypeCon)
   , _classMethodAssocs :: Map (Id ClassMethod) (Id ClassCon)
+  , _dumps :: [(DumpType, Decl)]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
 emptyGlobal :: Global
-emptyGlobal = Global mempty mempty mempty mempty Nothing mempty mempty mempty
+emptyGlobal = Global mempty mempty mempty mempty Nothing mempty mempty mempty mempty
 
 data Scope = Scope
   { _global :: Global
@@ -52,6 +53,25 @@ program global = Program $ concat
   , DInstance <$> global^..instances.traverse.each
   , DDefault <$> global^..defaultTypes.each
   ]
+
+dump :: Global -> [Decl]
+dump global = mapMaybe (uncurry dumpDecl) (global^.dumps)
+ where
+  equalInst = (==) `on` (quantification .~ Untyped)
+  dumpDecl DumpEverything d = case d of
+    DDef def -> DDef <$> global^?defs.ix (identity def)
+    DData ty _ -> uncurry DData <$> global^?dataTypes.ix (identity ty).to (second toList)
+    DClass cls _ -> uncurry DClass <$> global^?classes.ix (identity cls).to (second toList)
+    DInstance inst -> DInstance <$> global^?instances.ix (inst^.cls).folded.filtered (equalInst inst)
+    DDefault _ -> DDefault <$> global^.defaultTypes
+    DDump _ d -> dumpDecl DumpEverything d
+  dumpDecl DumpTypeSignature d = fmap ?? dumpDecl DumpEverything d $ \case
+    DDef def -> DDef (def & body .~ Nothing)
+    d -> d
+  dumpDecl DumpKindSignature d = fmap ?? dumpDecl DumpEverything d $ \case
+    DData ty _ -> DData ty []
+    DClass cls _ -> DClass cls []
+    d -> d
 
 class Scoped a where
   scoped :: (MonadError Error m, MonadReader Scope m) => a -> m b -> m b

@@ -123,6 +123,13 @@ default {
   Maybe
   Integer
 }
+
+// dump
+dump(type) val id = fun x -> x
+dump(kind) data Free f a {
+  con Pure a
+  con Free (f (Free f a))
+}
 ```
 
 ## References
