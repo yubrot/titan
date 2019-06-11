@@ -19,8 +19,6 @@ module Titan.Prelude
   , module Data.Void
   , module Debug.Trace
   , modifyM
-  , whenM
-  , unlessM
   , nubOrd
   ) where
 
@@ -47,16 +45,6 @@ import qualified Data.Set as Set
 
 modifyM :: MonadState s m => (s -> m s) -> m ()
 modifyM f = get >>= f >>= put
-
-whenM :: Monad m => m Bool -> m () -> m ()
-whenM cond body = do
-  r <- cond
-  when r body
-
-unlessM :: Monad m => m Bool -> m () -> m ()
-unlessM cond body = do
-  r <- cond
-  unless r body
 
 nubOrd :: Ord a => [a] -> [a]
 nubOrd = go mempty

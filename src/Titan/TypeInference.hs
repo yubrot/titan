@@ -116,12 +116,20 @@ verifyInstances = do
         Left (CannotUnifyType _ _ _) -> return ()
         Left e -> throwError e
 
+  forM_ (Map.assocs instances) $ \(classId, insts) -> do
+    cls <- resolveUse' classId
+    forM_ insts $ \inst -> do
+      (_, inst') <- instantiate inst
+      premises <- mapM buildPremise (inst'^.context)
+      cls' <- substitute (inst'^.arguments) cls
+      mapM_ (verifyEntailment premises) (cls'^.superclasses)
+
 tiAll :: TI m => Global -> m Global
 tiAll g = do
   defs' <- tiBindGroup (g^.defs)
   classes' <- scoped defs' $ mapM tiClass (g^.classes)
   constCtx <- use remainingCtx
-  forM_ constCtx $ \p -> unlessM (entail [] p) $ throwError $ NoMatchingInstances [] p
+  mapM_ (verifyEntailment []) constCtx
   return $ g & defs .~ defs' & classes .~ classes'
 
 tiLiteral :: TI m => Type -> Literal -> m Literal
@@ -358,7 +366,9 @@ resolveAmbiguities excludedVars context = do
   accept var ctx ty = do
     k <- kindOf ty
     tests <- forM ctx $ \case
-      CClass cls [TVar var' k' _] | var == var' && k == k' -> entail [] (CClass cls [ty])
+      CClass cls [TVar var' k' _] | var == var' && k == k' -> do
+        entail <- buildEntailment [] (CClass cls [ty])
+        return (entail^.complete)
       _ -> return False
     return $ and tests
 
@@ -383,10 +393,10 @@ reduceContext ps es = do
         Just (ResolvedInstanceByEnv _ _ es) -> es >>= expand
         _ -> [entail^.constraint]
 
-entail :: TI m => [Premise] -> Constraint -> m Bool
-entail premises p = do
-  e <- buildEntailment premises p
-  return (e^.complete)
+verifyEntailment :: TI m => [Premise] -> Constraint -> m ()
+verifyEntailment premises p = do
+  entail <- buildEntailment premises p
+  unless (entail^.complete) $ throwError $ NoMatchingInstances (map (^.constraint) premises) p
 
 buildEntailment :: TI m => [Premise] -> Constraint -> m Entailment
 buildEntailment premises p = build 0 p
@@ -443,11 +453,14 @@ matchingInstances :: TI m => Constraint -> m [(Instance, [Type])]
 matchingInstances = \case
   CClass id args -> do
     insts <- resolveUse @_ @[Instance] id
-    insts <- forM insts $ \inst -> runExceptT $ do
+    insts <- forM insts $ \inst -> do
       (vs, inst') <- instantiate inst
-      s <- match @Type (inst'^.arguments) args
-      return (inst, apply s vs)
-    return $ rights insts
+      s <- runExceptT $ match @Type (inst'^.arguments) args
+      case s of
+        Right s -> return $ Just (inst, apply s vs)
+        Left MatchFailed -> return Nothing
+        Left e -> throwError e
+    return $ catMaybes insts
 
 improveByInstances :: TI m => Constraint -> m ()
 improveByInstances = \case

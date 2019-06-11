@@ -63,6 +63,18 @@ spec = describe "Titan.TypeInference" $ do
       ==>! \case OverlappingInstances _ _ -> True; _ -> False
     "data T data U class A a b instance A a T instance A a U"
       ==> "data T data U class A (a : Type) (b : Type) instance [(a : Type)] A a T instance [(a : Type)] A a U"
+    "data T class F a class G a where F a instance G T"
+      ==>! \case NoMatchingInstances _ _ -> True; _ -> False
+    "data T class F a class G a where F a instance F T instance G T"
+      ==> "data T class F (a : Type) class G (a : Type) where F a instance [] F T instance [] G T"
+    "data T a class F a class G a where F a instance F (T a) where F a instance G (T a)"
+      ==>! \case NoMatchingInstances _ _ -> True; _ -> False
+    "data T a class F a class G a where F a instance F (T a) where F a instance G (T a) where F a"
+      ==> "data T (a : Type) class F (a : Type) class G (a : Type) where F a instance [(a : Type)] F (T a) where F a instance [(a : Type)] G (T a) where F a"
+    "data T a class F a class G a where F a instance F (T a) where F a instance G (T a) where G a"
+      ==> "data T (a : Type) class F (a : Type) class G (a : Type) where F a instance [(a : Type)] F (T a) where F a instance [(a : Type)] G (T a) where G a"
+    "data T a class F a class G a where F a instance F (T a) where G a instance G (T a) where G a"
+      ==> "data T (a : Type) class F (a : Type) class G (a : Type) where F a instance [(a : Type)] F (T a) where G a instance [(a : Type)] G (T a) where G a"
   it "implicit defs" $ do
     "val f = A data T { con A }"
       ==> "val f : [] T = A data T { con A }"
