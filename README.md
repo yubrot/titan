@@ -27,8 +27,8 @@ This implementation is based on the implementation of [Typing Haskell in Haskell
 ### Kinds
 ```
 _a            // var (internal)
-Type          // types of values
-Constraint    // constraints
+*             // types of values
+?             // constraints
 k -> k        // function kind
 ```
 

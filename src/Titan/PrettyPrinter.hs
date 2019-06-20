@@ -24,8 +24,8 @@ instance Pretty (Id a) where
 instance Pretty Kind where
   pprintsPrec prec = \case
     KVar s -> raw "_" . pprintsPrec prec s
-    KType -> raw "Type"
-    KConstraint -> raw "Constraint"
+    KType -> raw "*"
+    KConstraint -> raw "?"
     KFun a b -> paren (0 < prec) (pprintsPrec 1 a . raw " -> " . pprintsPrec 0 b)
 
 instance Pretty Type where

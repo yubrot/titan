@@ -24,13 +24,13 @@ spec = describe "Titan.Parser" $ do
   it "Kind" $ do
     test @Kind "a"
       `shouldSatisfy` isLeft
-    test @Kind "Type"
+    test @Kind "*"
       `shouldBe` Right KType
-    test @Kind "Constraint"
+    test @Kind "?"
       `shouldBe` Right KConstraint
-    test @Kind "Type -> Type"
+    test @Kind "* -> *"
       `shouldBe` Right (KType --> KType)
-    test @Kind "Type -> (Type -> Type) -> Type"
+    test @Kind "* -> (* -> *) -> *"
       `shouldBe` Right (KType --> (KType --> KType) --> KType)
   it "Type" $ do
     test @Type "a"
@@ -52,7 +52,7 @@ spec = describe "Titan.Parser" $ do
   it "Parameter" $ do
     test @Parameter "a"
       `shouldBe` Right (var "a")
-    test @Parameter "(a : Type -> Type)"
+    test @Parameter "(a : * -> *)"
       `shouldBe` Right (Parameter (Id "a") (Typed Explicit $ KType --> KType))
   it "Constraint" $ do
     test @Constraint "Partial"
@@ -136,7 +136,7 @@ spec = describe "Titan.Parser" $ do
       `shouldBe` Right (ELet [LocalDef (Id "x") (Typed Explicit $ Scheme Untyped (var "a") []) (Just $ var "y")] (var "z"))
     test @Expr "let x : [a] a in z"
       `shouldBe` Right (ELet [LocalDef (Id "x") (Typed Explicit $ Scheme (Typed Explicit [var "a"]) (var "a") []) Nothing] (var "z"))
-    test @Expr "let x : [(a : Type)] a where Show a in z"
+    test @Expr "let x : [(a : *)] a where Show a in z"
       `shouldBe` Right (ELet [LocalDef (Id "x") (Typed Explicit $ Scheme (Typed Explicit [Parameter (Id "a") (Typed Explicit KType)]) (var "a") [con "Show" [var "a"]]) Nothing] (var "z"))
     test @Expr "fun a b -> a"
       `shouldBe` Right (ELam [[var "a", var "b"] :-> var "a"])

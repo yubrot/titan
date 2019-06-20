@@ -91,8 +91,8 @@ kind = \case
   E -> foldr1 (-->) <$> ((:) <$> kind T <*> many (reserved "->" *> kind E))
   T -> kind F
   F -> choice
-    [ KType <$ reserved "Type"
-    , KConstraint <$ reserved "Constraint"
+    [ KType <$ reserved "*"
+    , KConstraint <$ reserved "?"
     , parens (kind E)
     ]
 

@@ -19,13 +19,13 @@ spec = describe "Titan.PrettyPrinter" $ do
     test @Kind (KVar $ Id "a")
       `shouldBe` "_a"
     test @Kind KType
-      `shouldBe` "Type"
+      `shouldBe` "*"
     test @Kind KConstraint
-      `shouldBe` "Constraint"
+      `shouldBe` "?"
     test @Kind (KType --> KType)
-      `shouldBe` "Type -> Type"
+      `shouldBe` "* -> *"
     test @Kind (KType --> (KType --> KType) --> KType)
-      `shouldBe` "Type -> (Type -> Type) -> Type"
+      `shouldBe` "* -> (* -> *) -> *"
   it "Type" $ do
     test @Type (TVar (Id "a") KType topLevel)
       `shouldBe` "_a"
@@ -47,9 +47,9 @@ spec = describe "Titan.PrettyPrinter" $ do
     test @Parameter (var "a")
       `shouldBe` "a"
     test @Parameter (Parameter (Id "a") (Typed Explicit KType))
-      `shouldBe` "a : Type"
+      `shouldBe` "a : *"
     test @Parameter (Parameter (Id "a") (Typed Inferred $ KType --> KType))
-      `shouldBe` "a : Type -> Type"
+      `shouldBe` "a : * -> *"
   it "Constraint" $ do
     test @Constraint (con "Partial" [])
       `shouldBe` "Partial"
@@ -67,7 +67,7 @@ spec = describe "Titan.PrettyPrinter" $ do
     test (Scheme (Typed Explicit [var "a"]) (var "a" --> var "a") [])
       `shouldBe` "[a] a -> a"
     test (Scheme (Typed Explicit [Parameter (Id "a") (Typed Inferred KType)]) (var "a" --> var "a") [])
-      `shouldBe` "[(a : Type)] a -> a"
+      `shouldBe` "[(a : *)] a -> a"
   it "Literal" $ do
     test (LInteger 123)
       `shouldBe` "123"
@@ -142,7 +142,7 @@ spec = describe "Titan.PrettyPrinter" $ do
     test (DDump DumpEverything (DData (DataTypeCon (Id "List") [var "a"]) []))
       `shouldBe` "dump data List a"
     test (DData (DataTypeCon (Id "Free") [Parameter (Id "f") (Typed Explicit $ KType --> KType), Parameter (Id "a") Untyped]) [])
-      `shouldBe` "data Free (f : Type -> Type) a"
+      `shouldBe` "data Free (f : * -> *) a"
     test (DData (DataTypeCon (Id "List") [var "a"]) [DataValueCon (Id "Cons") [var "a", con "List" [var "a"]], DataValueCon (Id "Nil") []])
       `shouldBe` "data List a { con Cons a (List a) con Nil }"
     test (DClass (ClassCon (Id "Eq") [var "a"] [] []) [])
