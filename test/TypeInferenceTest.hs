@@ -268,7 +268,8 @@ spec = describe "Titan.TypeInference" $ do
       ==>! \case CannotResolveAmbiguity _ _ -> True; _ -> False
     "val f val g = f h class Functor f { val h : f x }"
       ==>! \case CannotResolveAmbiguity _ _ -> True; _ -> False
-    -- FIXME: This should be resolvable:
+    "val f val g = f h class Functor f { val h : f x } instance Functor f"
+      ==> "val f : [(a : Type)] a val g : [(b : Type)] b = f h class Functor (f : Type -> Type) { val h : [(x : Type)] f x } instance [(f : Type -> Type)] Functor f"
     "val f val g = f h data Maybe t class Functor f { val h : f x } instance Functor Maybe"
       ==>! \case CannotResolveAmbiguity _ _ -> True; _ -> False
     "val f val g = f h data Maybe t class Functor f { val h : f x } instance Functor Maybe default { Maybe }"

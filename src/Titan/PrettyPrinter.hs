@@ -8,8 +8,6 @@ module Titan.PrettyPrinter
 import Titan.Prelude
 import Titan.TT
 
--- TODO: Use prettyprinter to make more human-readable output
-
 class Pretty a where
   {-# MINIMAL pprintsPrec | pprint #-}
   pprintsPrec :: Int -> a -> ShowS
