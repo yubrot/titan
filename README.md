@@ -56,7 +56,7 @@ a -> f a where Applicative f
 [a f] a -> f a where Applicative f
 
 // specifying quantification with kind signatures
-[(a : Type) (f : Type -> Type)] a -> f a where Applicative f
+[(a : *) (f : * -> *)] a -> f a where Applicative f
 ```
 
 ### Literals
