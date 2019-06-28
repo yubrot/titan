@@ -22,9 +22,9 @@ spec = describe "Titan.PrettyPrinter" $ do
       `shouldBe` "*"
     test @Kind KConstraint
       `shouldBe` "?"
-    test @Kind (KType --> KType)
+    test @Kind (KType :--> KType)
       `shouldBe` "* -> *"
-    test @Kind (KType --> (KType --> KType) --> KType)
+    test @Kind (KType :--> (KType :--> KType) :--> KType)
       `shouldBe` "* -> (* -> *) -> *"
   it "Type" $ do
     test @Type (TVar (Id "a") KType topLevel)
@@ -35,11 +35,11 @@ spec = describe "Titan.PrettyPrinter" $ do
       `shouldBe` "Pair a b"
     test @Type (TFun (var "a") (var "b"))
       `shouldBe` "a -> b"
-    test @Type (var "a" --> var "b" --> var "c")
+    test @Type (var "a" :--> var "b" :--> var "c")
       `shouldBe` "a -> b -> c"
-    test @Type (con "Maybe" [var "a"] --> con "Maybe" [var "b"])
+    test @Type (con "Maybe" [var "a"] :--> con "Maybe" [var "b"])
       `shouldBe` "Maybe a -> Maybe b"
-    test @Type (con "Maybe" [var "a" --> var "b"] --> con "Maybe" [var "b"])
+    test @Type (con "Maybe" [var "a" :--> var "b"] :--> con "Maybe" [var "b"])
       `shouldBe` "Maybe (a -> b) -> Maybe b"
     test @Type (var "a")
       `shouldBe` "a"
@@ -48,7 +48,7 @@ spec = describe "Titan.PrettyPrinter" $ do
       `shouldBe` "a"
     test @Parameter (Parameter (Id "a") (Typed Explicit KType))
       `shouldBe` "a : *"
-    test @Parameter (Parameter (Id "a") (Typed Inferred $ KType --> KType))
+    test @Parameter (Parameter (Id "a") (Typed Inferred $ KType :--> KType))
       `shouldBe` "a : * -> *"
   it "Constraint" $ do
     test @Constraint (con "Partial" [])
@@ -62,11 +62,11 @@ spec = describe "Titan.PrettyPrinter" $ do
       `shouldBe` "a"
     test (Scheme Untyped (var "a") [con "Eq" [var "a"]])
       `shouldBe` "a where Eq a"
-    test (Scheme Untyped (var "a" --> var "b") [con "Eq" [var "a"], con "Show" [var "a"]])
+    test (Scheme Untyped (var "a" :--> var "b") [con "Eq" [var "a"], con "Show" [var "a"]])
       `shouldBe` "a -> b where (Eq a, Show a)"
-    test (Scheme (Typed Explicit [var "a"]) (var "a" --> var "a") [])
+    test (Scheme (Typed Explicit [var "a"]) (var "a" :--> var "a") [])
       `shouldBe` "[a] a -> a"
-    test (Scheme (Typed Explicit [Parameter (Id "a") (Typed Inferred KType)]) (var "a" --> var "a") [])
+    test (Scheme (Typed Explicit [Parameter (Id "a") (Typed Inferred KType)]) (var "a" :--> var "a") [])
       `shouldBe` "[(a : *)] a -> a"
   it "Literal" $ do
     test (LInteger 123)
@@ -97,7 +97,7 @@ spec = describe "Titan.PrettyPrinter" $ do
       `shouldBe` "x"
     test @Expr (con "Pair" [])
       `shouldBe` "Pair"
-    test @Expr (var "f" @@ var "a" @@ var "b")
+    test @Expr (var "f" :@@ var "a" :@@ var "b")
       `shouldBe` "f a b"
     test @Expr (con "Pair" [var "a", var "b"])
       `shouldBe` "Pair a b"
@@ -113,7 +113,7 @@ spec = describe "Titan.PrettyPrinter" $ do
       `shouldBe` "let x : a = y in z"
     test @Expr (ELet1 (LocalDef (Id "x") (Typed Explicit $ Scheme Untyped (var "a") []) Nothing) (var "z"))
       `shouldBe` "let x : a in z"
-    test @Expr (ELet1 (LocalDef (Id "x") Untyped (Just $ var "a")) (var "z") @@ var "b")
+    test @Expr (ELet1 (LocalDef (Id "x") Untyped (Just $ var "a")) (var "z") :@@ var "b")
       `shouldBe` "(let x = a in z) b"
     test @Expr (ELam1 ([var "a", var "b"] :-> var "a"))
       `shouldBe` "fun a b -> a"
@@ -130,10 +130,10 @@ spec = describe "Titan.PrettyPrinter" $ do
       `shouldBe` "let x = fun y -> z in fun a -> b"
     test @Expr (lam2 "w" (let1 "x" (lam1 "y" (var "z")) (lam1 "a" (var "b"))) "v" (var "c"))
       `shouldBe` "fun w -> let x = fun y -> z in (fun a -> b) | v -> c"
-    test @Expr (lam2 "w" (let1 "x" (lam1 "y" (var "z")) (lam1 "a" (var "b")) @@ var "c") "v" (var "d"))
+    test @Expr (lam2 "w" (let1 "x" (lam1 "y" (var "z")) (lam1 "a" (var "b")) :@@ var "c") "v" (var "d"))
       `shouldBe` "fun w -> (let x = fun y -> z in fun a -> b) c | v -> d"
   it "Decl" $ do
-    test (DDef (Def (Id "show") (Typed Explicit $ Scheme Untyped (var "a" --> con "String" []) [con "Show" [var "a"]]) Nothing))
+    test (DDef (Def (Id "show") (Typed Explicit $ Scheme Untyped (var "a" :--> con "String" []) [con "Show" [var "a"]]) Nothing))
       `shouldBe` "val show : a -> String where Show a"
     test (DDef (Def (Id "Id") Untyped (Just $ ELam1 ([var "x"] :-> var "x"))))
       `shouldBe` "val Id = fun x -> x"
@@ -141,17 +141,17 @@ spec = describe "Titan.PrettyPrinter" $ do
       `shouldBe` "data List a"
     test (DDump DumpEverything (DData (DataTypeCon (Id "List") [var "a"]) []))
       `shouldBe` "dump data List a"
-    test (DData (DataTypeCon (Id "Free") [Parameter (Id "f") (Typed Explicit $ KType --> KType), Parameter (Id "a") Untyped]) [])
+    test (DData (DataTypeCon (Id "Free") [Parameter (Id "f") (Typed Explicit $ KType :--> KType), Parameter (Id "a") Untyped]) [])
       `shouldBe` "data Free (f : * -> *) a"
     test (DData (DataTypeCon (Id "List") [var "a"]) [DataValueCon (Id "Cons") [var "a", con "List" [var "a"]], DataValueCon (Id "Nil") []])
       `shouldBe` "data List a { con Cons a (List a) con Nil }"
     test (DClass (ClassCon (Id "Eq") [var "a"] [] []) [])
       `shouldBe` "class Eq a"
-    test (DClass (ClassCon (Id "Eq") [var "a"] [] []) [ClassMethod (Id "eq") (Scheme Untyped (var "a" --> var "a" --> con "Bool" []) []) Nothing])
+    test (DClass (ClassCon (Id "Eq") [var "a"] [] []) [ClassMethod (Id "eq") (Scheme Untyped (var "a" :--> var "a" :--> con "Bool" []) []) Nothing])
       `shouldBe` "class Eq a { val eq : a -> a -> Bool }"
     test (DClass (ClassCon (Id "Coerce") [var "a", var "b"] [[Id "a"] :~> [Id "b"], [Id "b"] :~> [Id "a"]] []) [])
       `shouldBe` "class Coerce a b | a ~> b, b ~> a"
-    test (DClass (ClassCon (Id "Ord") [var "a"] [] [con "Eq" [var "a"]]) [ClassMethod (Id "compare") (Scheme Untyped (var "a" --> var "a" --> con "Ordering" []) []) Nothing])
+    test (DClass (ClassCon (Id "Ord") [var "a"] [] [con "Eq" [var "a"]]) [ClassMethod (Id "compare") (Scheme Untyped (var "a" :--> var "a" :--> con "Ordering" []) []) Nothing])
       `shouldBe` "class Ord a where Eq a { val compare : a -> a -> Ordering }"
     test (DInstance (Instance Untyped (Id "Eq") [con "Pair" [var "a", var "b"]] [con "Eq" [var "a"], con "Eq" [var "b"]]))
       `shouldBe` "instance Eq (Pair a b) where (Eq a, Eq b)"

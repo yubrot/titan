@@ -231,7 +231,7 @@ instance KindOf Type where
 instance KindOf TypeCon where
   kindOf = \case
     TypeConData id -> kindOf id
-    TypeConArrow -> pure $ KType --> KType --> KType
+    TypeConArrow -> pure $ KType :--> KType :--> KType
 
 instance KindOf Parameter where
   kindOf p = case p^?kind.typed of
@@ -239,10 +239,10 @@ instance KindOf Parameter where
     _ -> throwError $ InternalError "KI" "Escaped untyped kind"
 
 instance KindOf DataTypeCon where
-  kindOf ty = foldr (-->) KType <$> mapM kindOf (ty^.parameters)
+  kindOf ty = foldr (:-->) KType <$> mapM kindOf (ty^.parameters)
 
 instance KindOf ClassCon where
-  kindOf cls = foldr (-->) KConstraint <$> mapM kindOf (cls^.parameters)
+  kindOf cls = foldr (:-->) KConstraint <$> mapM kindOf (cls^.parameters)
 
 class TypeOf a where
   typeOf :: (MonadReader Scope m, MonadError Error m) => a -> m Scheme
@@ -280,7 +280,7 @@ instance TypeOf Def where
 instance TypeOf DataValueCon where
   typeOf vc = do
     ty <- resolveUse @_ @DataTypeCon (identity vc)
-    let body = foldr (-->) (foldl (@@) (TCon (TypeConData (identity ty))) [TGen (identity p) | p <- ty^.parameters]) (vc^.fields)
+    let body = foldr (:-->) (foldl (:@@) (TCon (TypeConData (identity ty))) [TGen (identity p) | p <- ty^.parameters]) (vc^.fields)
     return $ Scheme (Typed Explicit (ty^.parameters)) body mempty
 
 instance TypeOf ClassMethod where

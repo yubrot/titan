@@ -25,7 +25,7 @@ module Titan.Prelude
 
 import Prelude
 import Control.Applicative
-import Control.Arrow
+import Control.Arrow hiding (app)
 import Control.Lens hiding (Level)
 import Control.Monad
 import Control.Monad.Except

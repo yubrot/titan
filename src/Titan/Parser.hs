@@ -88,7 +88,7 @@ data E = E | T | F
 
 kind :: E -> Parser Kind
 kind = \case
-  E -> foldr1 (-->) <$> ((:) <$> kind T <*> many (reserved "->" *> kind E))
+  E -> foldr1 (:-->) <$> ((:) <$> kind T <*> many (reserved "->" *> kind E))
   T -> kind F
   F -> choice
     [ KType <$ reserved "*"
@@ -98,8 +98,8 @@ kind = \case
 
 ty :: E -> Parser Type
 ty = \case
-  E -> foldr1 (-->) <$> ((:) <$> ty T <*> many (reserved "->" *> ty E))
-  T -> foldl1 (@@) <$> some (ty F)
+  E -> foldr1 (:-->) <$> ((:) <$> ty T <*> many (reserved "->" *> ty E))
+  T -> foldl1 (:@@) <$> some (ty F)
   F -> choice
     [ TGen <$> parameterId
     , TCon <$> typeCon
@@ -174,7 +174,7 @@ expr = \case
     , ELam <$ reserved "fun" <* option () (reserved "|") <*> (alt `sepBy1` reserved "|")
     , expr T
     ]
-  T -> foldl1 (@@) <$> some (expr F)
+  T -> foldl1 (:@@) <$> some (expr F)
   F -> choice
     [ EVar . VVar <$> valueId
     , ECon <$> valueCon

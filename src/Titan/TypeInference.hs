@@ -137,7 +137,7 @@ tiLiteral ty l = pure l <* case l of
   LInteger _ -> remainingCtx <>= [CNum ty]
   LChar _ -> unify ty TChar
   LFloat _ -> remainingCtx <>= [CFractional ty]
-  LString _ -> unify ty (TListCon @@ TChar)
+  LString _ -> unify ty (TListCon :@@ TChar)
 
 tiPattern :: TI m => Type -> Pattern -> m Pattern
 tiPattern ty = \case
@@ -148,7 +148,7 @@ tiPattern ty = \case
   PDecon vc ps -> do
     cty <- newTVar KType
     ptys <- mapM (\_ -> newTVar KType) ps
-    unify (foldr (-->) ty ptys) cty
+    unify (foldr (:-->) ty ptys) cty
     PDecon <$> tiValueCon (length ps) cty vc <*> zipWithM tiPattern ptys ps
   PLit l -> do
     PLit <$> tiLiteral ty l
@@ -162,7 +162,7 @@ tiExpr ty = \case
   EApp a b -> do
     ta <- newTVar KType
     tb <- newTVar KType
-    unify (tb --> ty) ta
+    unify (tb :--> ty) ta
     EApp <$> tiExpr ta a <*> tiExpr tb b
   ELit l ->
     ELit <$> tiLiteral ty l
@@ -203,7 +203,7 @@ tiAlt arity ty (ps :-> e) = do
   scoped defs $ do
     ety <- newTVar KType
     ptys <- mapM (\_ -> newTVar KType) ps
-    unify (foldr (-->) ety ptys) ty
+    unify (foldr (:-->) ety ptys) ty
     (:->) <$> sequence (NonEmpty.zipWith tiPattern ptys ps) <*> tiExpr ety e
 
 tiValueCon :: TI m => Arity -> Type -> ValueCon -> m ValueCon

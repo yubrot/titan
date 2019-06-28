@@ -29,31 +29,31 @@ spec = describe "Titan.Parser" $ do
     test @Kind "?"
       `shouldBe` Right KConstraint
     test @Kind "* -> *"
-      `shouldBe` Right (KType --> KType)
+      `shouldBe` Right (KType :--> KType)
     test @Kind "* -> (* -> *) -> *"
-      `shouldBe` Right (KType --> (KType --> KType) --> KType)
+      `shouldBe` Right (KType :--> (KType :--> KType) :--> KType)
   it "Type" $ do
     test @Type "a"
       `shouldBe` Right (var "a")
     test @Type "val"
       `shouldSatisfy` isLeft
     test @Type "a -> b -> a"
-      `shouldBe` Right (var "a" --> var "b" --> var "a")
+      `shouldBe` Right (var "a" :--> var "b" :--> var "a")
     test @Type "Pair a b"
       `shouldBe` Right (con "Pair" [var "a", var "b"])
     test @Type "(->)"
       `shouldBe` Right (TCon TypeConArrow)
     test @Type "a -> Maybe a"
-      `shouldBe` Right (var "a" --> con "Maybe" [var "a"])
+      `shouldBe` Right (var "a" :--> con "Maybe" [var "a"])
     test @Type "Maybe (a -> b)"
-      `shouldBe` Right (con "Maybe" [var "a" --> var "b"])
+      `shouldBe` Right (con "Maybe" [var "a" :--> var "b"])
     test @Type "a (b c) d"
-      `shouldBe` Right (var "a" @@ (var "b" @@ var "c") @@ var "d")
+      `shouldBe` Right (var "a" :@@ (var "b" :@@ var "c") :@@ var "d")
   it "Parameter" $ do
     test @Parameter "a"
       `shouldBe` Right (var "a")
     test @Parameter "(a : * -> *)"
-      `shouldBe` Right (Parameter (Id "a") (Typed Explicit $ KType --> KType))
+      `shouldBe` Right (Parameter (Id "a") (Typed Explicit $ KType :--> KType))
   it "Constraint" $ do
     test @Constraint "Partial"
       `shouldBe` Right (con "Partial" [])
@@ -122,12 +122,12 @@ spec = describe "Titan.Parser" $ do
     test @Expr "123"
       `shouldBe` Right (ELit (LInteger 123))
     test @Expr "f (a b) c"
-      `shouldBe` Right (var "f" @@ (var "a" @@ var "b") @@ var "c")
+      `shouldBe` Right (var "f" :@@ (var "a" :@@ var "b") :@@ var "c")
     let a =: e = LocalDef (Id a) Untyped (Just e)
     test @Expr "let x = y in z"
       `shouldBe` Right (ELet ["x" =: var "y"] (var "z"))
     test @Expr "let x = y z, a = b in c"
-      `shouldBe` Right (ELet ["x" =: (var "y" @@ var "z"), "a" =: var "b"] (var "c"))
+      `shouldBe` Right (ELet ["x" =: (var "y" :@@ var "z"), "a" =: var "b"] (var "c"))
     test @Expr "let x = let y = z in a in let b = c in d"
       `shouldBe` Right (ELet ["x" =: ELet ["y" =: var "z"] (var "a")] (ELet ["b" =: var "c"] (var "d")))
     test @Expr "let x : a in z"
@@ -152,7 +152,7 @@ spec = describe "Titan.Parser" $ do
       `shouldBe` Right (ELam [[var "w"] :-> ELet ["x" =: ELam [[var "y"] :-> var "z"]] (ELam [[var "a"] :-> var "b"]), [var "v"] :-> var "c"])
   it "Decl" $ do
     test "val show : a -> String where Show a"
-      `shouldBe` Right (DDef (Def (Id "show") (Typed Explicit $ Scheme Untyped (var "a" --> con "String" []) [con "Show" [var "a"]]) Nothing))
+      `shouldBe` Right (DDef (Def (Id "show") (Typed Explicit $ Scheme Untyped (var "a" :--> con "String" []) [con "Show" [var "a"]]) Nothing))
     test "dump val show"
       `shouldBe` Right (DDump DumpEverything (DDef (Def (Id "show") Untyped Nothing)))
     test "data List a {\n  con Cons a (List a)\n  con Nil\n}"
@@ -160,7 +160,7 @@ spec = describe "Titan.Parser" $ do
     test "class Partial"
       `shouldBe` Right (DClass (ClassCon (Id "Partial") [] [] []) [])
     test "class Ord a where Eq a {\n  val compare : a -> a -> Ordering\n}"
-      `shouldBe` Right (DClass (ClassCon (Id "Ord") [var "a"] [] [con "Eq" [var "a"]]) [ClassMethod (Id "compare") (Scheme Untyped (var "a" --> var "a" --> con "Ordering" []) []) Nothing])
+      `shouldBe` Right (DClass (ClassCon (Id "Ord") [var "a"] [] [con "Eq" [var "a"]]) [ClassMethod (Id "compare") (Scheme Untyped (var "a" :--> var "a" :--> con "Ordering" []) []) Nothing])
     test "class Coerce a b | a ~> b"
       `shouldBe` Right (DClass (ClassCon (Id "Coerce") [var "a", var "b"] [[Id "a"] :~> [Id "b"]] []) [])
     test "instance Eq (Pair a b) where (Eq a, Eq b)"

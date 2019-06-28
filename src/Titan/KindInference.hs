@@ -56,7 +56,7 @@ kiType = \case
     ak <- kiType a
     bk <- kiType b
     k <- newKVar
-    unify (bk --> k) ak
+    unify (bk :--> k) ak
     return k
   TGen id ->
     kindOf id
@@ -65,7 +65,7 @@ kiConstraint :: KI m => Constraint -> m ()
 kiConstraint = \case
   CClass id tys -> do
     k <- kindOf id
-    k' <- foldr (-->) KConstraint <$> mapM kiType tys
+    k' <- foldr (:-->) KConstraint <$> mapM kiType tys
     unify k k'
 
 kiScheme :: KI m => Scheme -> m ()

@@ -18,6 +18,24 @@ instance Ord a => Ord (Typing a) where
   compare _           Untyped     = GT
   compare (Typed _ a) (Typed _ b) = compare a b
 
+class Fun a where
+  fun :: Prism' a (a, a)
+
+pattern (:-->) :: Fun a => a -> a -> a
+pattern (:-->) a b <- (preview fun -> Just (a, b))
+  where (:-->) a b = review fun (a, b)
+
+infixr 0 :-->
+
+class App a where
+  app :: Prism' a (a, a)
+
+pattern (:@@) :: App a => a -> a -> a
+pattern (:@@) a b <- (preview app -> Just (a, b))
+  where (:@@) a b = review app (a, b)
+
+infixl 1 :@@
+
 data Explicitness
   = Explicit
   | Inferred
@@ -39,6 +57,11 @@ data Kind
   | KFun Kind Kind
   deriving (Eq, Ord, Show, Data, Typeable)
 
+instance Fun Kind where
+  fun = prism (uncurry KFun) $ \case
+    KFun a b -> Right (a, b)
+    k -> Left k
+
 newtype Level = Level
   { _value :: Int
   }
@@ -51,8 +74,18 @@ data Type
   | TGen (Id Parameter)
   deriving (Eq, Ord, Show, Data, Typeable)
 
+instance Fun Type where
+  fun = prism (uncurry TFun) $ \case
+    TFun a b -> Right (a, b)
+    k -> Left k
+
+instance App Type where
+  app = prism (uncurry TApp) $ \case
+    TApp a b -> Right (a, b)
+    k -> Left k
+
 pattern TFun :: Type -> Type -> Type
-pattern TFun a b = TApp (TApp (TCon TypeConArrow) a) b
+pattern TFun a b = TCon TypeConArrow :@@ a :@@ b
 
 -- FIXME: Do not depend on well-known types lexically.
 
@@ -125,6 +158,11 @@ data Expr
   | ELet (NonEmpty LocalDef) Expr
   | ELam (NonEmpty Alt)
   deriving (Eq, Ord, Show, Data, Typeable)
+
+instance App Expr where
+  app = prism (uncurry EApp) $ \case
+    EApp a b -> Right (a, b)
+    k -> Left k
 
 data LocalDef = LocalDef
   { _ident :: Id LocalDef
@@ -310,28 +348,6 @@ instance OnValue Def where
 instance OnValue ClassMethod where
   toValue = VClassMethod
 
-class Fun a where
-  (-->) :: a -> a -> a
-
-infixr 0 -->
-
-instance Fun Kind where
-  (-->) = KFun
-
-instance Fun Type where
-  (-->) = TFun
-
-class App a where
-  (@@) :: a -> a -> a
-
-infixl 1 @@
-
-instance App Type where
-  (@@) = TApp
-
-instance App Expr where
-  (@@) = EApp
-
 class Var a where
   var :: Name -> a
 
@@ -357,7 +373,7 @@ class Con a p | a -> p where
   con :: Name -> [p] -> a
 
 instance Con Type Type where
-  con c = foldl (@@) (TCon $ TypeConData $ Id c)
+  con c = foldl (:@@) (TCon $ TypeConData $ Id c)
 
 instance Con Constraint Type where
   con c = CClass (Id c) . toList
@@ -366,4 +382,4 @@ instance Con Pattern Pattern where
   con c = PDecon (ValueConData $ Id c)
 
 instance Con Expr Expr where
-  con c = foldl (@@) (ECon $ ValueConData $ Id c)
+  con c = foldl (:@@) (ECon $ ValueConData $ Id c)
