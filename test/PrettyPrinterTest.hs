@@ -22,18 +22,30 @@ spec = describe "Titan.PrettyPrinter" $ do
       `shouldBe` "*"
     test @Kind KConstraint
       `shouldBe` "?"
+    test @Kind (KRow KType)
+      `shouldBe` "# *"
     test @Kind (KType :--> KType)
       `shouldBe` "* -> *"
     test @Kind (KType :--> (KType :--> KType) :--> KType)
       `shouldBe` "* -> (* -> *) -> *"
+    test @Kind (KType :--> KRow (KType :--> KRow KType))
+      `shouldBe` "* -> # (* -> # *)"
   it "Type" $ do
     test @Type (TVar (Id "a") KType topLevel)
       `shouldBe` "_a"
     test @Type (con "Pair" [])
       `shouldBe` "Pair"
+    test @Type (TCon TypeConArrow)
+      `shouldBe` "(->)"
+    test @Type (TCon TypeConRecord)
+      `shouldBe` "{_}"
+    test @Type TEmptyRow
+      `shouldBe` "<>"
+    test @Type (TCon (TypeConRowExtend "name"))
+      `shouldBe` "<+name>"
     test @Type (con "Pair" [var "a", var "b"])
       `shouldBe` "Pair a b"
-    test @Type (TFun (var "a") (var "b"))
+    test @Type (var "a" :--> var "b")
       `shouldBe` "a -> b"
     test @Type (var "a" :--> var "b" :--> var "c")
       `shouldBe` "a -> b -> c"
@@ -43,6 +55,32 @@ spec = describe "Titan.PrettyPrinter" $ do
       `shouldBe` "Maybe (a -> b) -> Maybe b"
     test @Type (var "a")
       `shouldBe` "a"
+    test @Type (TRowExtend "name" (var "a") TEmptyRow)
+      `shouldBe` "<name : a>"
+    test @Type (TRowExtend "name" (var "a") (var "b"))
+      `shouldBe` "<name : a | b>"
+    test @Type (TRowExtend "x" (con "Int" []) (TRowExtend "y" (con "Int" []) TEmptyRow))
+      `shouldBe` "<x : Int, y : Int>"
+    test @Type (TRowExtend "x" (con "Int" []) (TRowExtend "y" (con "Int" []) (var "a")))
+      `shouldBe` "<x : Int, y : Int | a>"
+    test @Type (con "Eff" [TRowExtend "name" (var "a") TEmptyRow])
+      `shouldBe` "Eff <name : a>"
+    test @Type (TRecord (var "a"))
+      `shouldBe` "{ a }"
+    test @Type (TRecord TEmptyRow)
+      `shouldBe` "{}"
+    test @Type (TRecord (TRowExtend "name" (var "a") TEmptyRow))
+      `shouldBe` "{ name : a }"
+    test @Type (TRecord (TRowExtend "name" (var "a") (var "b")))
+      `shouldBe` "{ name : a | b }"
+    test @Type (TRecord (TRowExtend "x" (con "Int" []) (TRowExtend "y" (con "Int" []) TEmptyRow)))
+      `shouldBe` "{ x : Int, y : Int }"
+    test @Type (TRecord (TRowExtend "x" (con "Int" []) (TRowExtend "y" (con "Int" []) (var "a"))))
+      `shouldBe` "{ x : Int, y : Int | a }"
+    test @Type (con "IO" [TRecord (TRowExtend "name" (con "String" []) TEmptyRow)])
+      `shouldBe` "IO { name : String }"
+    test @Type (con "IO" [TupleCreate [con "A" [], var "b"]])
+      `shouldBe` "IO (A, b)"
   it "Parameter" $ do
     test @Parameter (var "a")
       `shouldBe` "a"
@@ -97,12 +135,42 @@ spec = describe "Titan.PrettyPrinter" $ do
       `shouldBe` "x"
     test @Expr (con "Pair" [])
       `shouldBe` "Pair"
+    test @Expr (ECon ValueConEmptyRecord)
+      `shouldBe` "{}"
+    test @Expr (ECon (ValueConRecordSelect "foo"))
+      `shouldBe` "{.foo}"
+    test @Expr (ECon (ValueConRecordRestrict "foo"))
+      `shouldBe` "{-foo}"
+    test @Expr (ECon (ValueConRecordExtend "foo"))
+      `shouldBe` "{+foo}"
+    test @Expr (ECon (ValueConRecordUpdate "foo"))
+      `shouldBe` "{%foo}"
     test @Expr (var "f" :@@ var "a" :@@ var "b")
       `shouldBe` "f a b"
     test @Expr (con "Pair" [var "a", var "b"])
       `shouldBe` "Pair a b"
     test @Expr (ELit (LInteger 123))
       `shouldBe` "123"
+    test @Expr (ERecordSelect "y" (var "x"))
+      `shouldBe` "x.y"
+    test @Expr (ERecordSelect "z" (ERecordSelect "y" (var "x")))
+      `shouldBe` "x.y.z"
+    test @Expr (var "f" :@@ ERecordSelect "c" (var "a" :@@ var "b") :@@ var "d")
+      `shouldBe` "f (a b).c d"
+    test @Expr (RecordCreate [("x", var "y")])
+      `shouldBe` "{ x = y }"
+    test @Expr (RecordCreate [("x", var "y"), ("a", var "b")])
+      `shouldBe` "{ x = y, a = b }"
+    test @Expr (RecordUpdate [("x", var "y")] (var "z"))
+      `shouldBe` "%{ x = y } z"
+    test @Expr (RecordUpdate [("x", var "y"), ("a", var "b")] (var "c"))
+      `shouldBe` "%{ x = y, a = b } c"
+    test @Expr (RecordUpdate [("x", var "y")] (RecordCreate [("a", var "b")]))
+      `shouldBe` "%{ x = y } { a = b }"
+    test @Expr (TupleCreate [])
+      `shouldBe` "{}"
+    test @Expr (TupleCreate [var "a", var "b"])
+      `shouldBe` "(a, b)"
     test @Expr (ELet1 (LocalDef (Id "x") Untyped (Just $ var "a")) (var "z"))
       `shouldBe` "let x = a in z"
     test @Expr (ELet [LocalDef (Id "x") Untyped (Just $ var "a"), LocalDef (Id "y") Untyped (Just $ var "b")] (var "z"))

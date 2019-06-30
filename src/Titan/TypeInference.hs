@@ -192,6 +192,8 @@ simplifyPattern = \case
       ps <- mapM simplifyPattern ps
       let tag v = (v^.ident.name, length (v^.fields))
       return $ PC.Constructor (PC.TagClosed (tag v) (vs^..each.to tag)) ps
+    _ ->
+      throwError $ InternalError "TI" "Record destructing is not yet implemented"
   PLit l -> return $ PC.Constructor (PC.TagLit l) []
 
 tiAlt :: TI m => Arity -> Type -> Alt -> m Alt
@@ -213,6 +215,8 @@ tiValueCon arity ty = \case
     v <- resolveUse' id
     when (length (v^.fields) /= arity) $ throwError $ ArityMismatch (length (v^.fields)) arity
     return $ ValueConData id
+  _ ->
+    throwError $ InternalError "TI" "Record destructing is not yet implemented"
 
 tiExpl :: TI m => (Scheme, Maybe Expr) -> m (Maybe Expr)
 tiExpl (scheme, e) = case e of

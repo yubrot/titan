@@ -28,6 +28,7 @@ instance JustifyUse Kind where
     KVar id -> throwError $ InternalError "Input" $ "Escaped kind variable _" ++ id^.name
     KType -> pure KType
     KConstraint -> pure KConstraint
+    KRow a -> KRow <$> justifyUse a
     KFun a b -> KFun <$> justifyUse a <*> justifyUse b
 
 instance JustifyUse Type where
@@ -41,6 +42,9 @@ instance JustifyUse TypeCon where
   justifyUse = \case
     TypeConData id -> TypeConData <$> justifyUse id
     TypeConArrow -> pure TypeConArrow
+    TypeConRecord -> pure TypeConRecord
+    TypeConEmptyRow -> pure TypeConEmptyRow
+    TypeConRowExtend l -> pure $ TypeConRowExtend l
 
 instance JustifyUse Parameter where
   justifyUse (Parameter id kind) = Parameter id <$> justifyUse kind
@@ -109,6 +113,11 @@ instance JustifyUse Value where
 instance JustifyUse ValueCon where
   justifyUse = \case
     ValueConData id -> ValueConData <$> justifyUse id
+    ValueConEmptyRecord -> pure ValueConEmptyRecord
+    ValueConRecordSelect l -> pure $ ValueConRecordSelect l
+    ValueConRecordRestrict l -> pure $ ValueConRecordRestrict l
+    ValueConRecordExtend l -> pure $ ValueConRecordExtend l
+    ValueConRecordUpdate l -> pure $ ValueConRecordUpdate l
 
 instance JustifyUse Def where
   justifyUse (Def id scheme body) = do

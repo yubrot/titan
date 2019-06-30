@@ -6,7 +6,7 @@ module Titan.Parser
 import Control.Monad.Combinators.NonEmpty (some, sepBy1)
 import qualified Data.Char as Char
 import qualified Data.List.NonEmpty as NonEmpty
-import Text.Megaparsec hiding (parse, some, sepBy1)
+import Text.Megaparsec hiding (label, parse, some, sepBy1)
 import qualified Text.Megaparsec.Char as C
 import qualified Text.Megaparsec.Char.Lexer as L
 import Titan.Prelude hiding (many, some)
@@ -57,6 +57,13 @@ instance Parse Program where
 inferrable :: Parser a -> Parser (Typing a)
 inferrable p = maybe Untyped (Typed Explicit) <$> optional p
 
+tupleOf :: TupleCreate a => Parser a -> Parser a
+tupleOf p = do
+  xs <- parens (p `sepBy` symbol ",")
+  case xs of
+    [x] -> return x
+    xs -> return $ TupleCreate xs
+
 anyId :: Parser Name -> Parser (Id a)
 anyId rep = try $ do
   s <- rep
@@ -89,12 +96,21 @@ data E = E | T | F
 kind :: E -> Parser Kind
 kind = \case
   E -> foldr1 (:-->) <$> ((:) <$> kind T <*> many (reserved "->" *> kind E))
-  T -> kind F
+  T -> choice
+    [ KRow <$ reserved "#" <*> kind F
+    , kind F
+    ]
   F -> choice
     [ KType <$ reserved "*"
     , KConstraint <$ reserved "?"
     , parens (kind E)
     ]
+
+label :: Parser Label
+label = choice
+  [ view name <$> valueId
+  , show <$> integer
+  ]
 
 ty :: E -> Parser Type
 ty = \case
@@ -103,13 +119,29 @@ ty = \case
   F -> choice
     [ TGen <$> parameterId
     , TCon <$> typeCon
-    , parens (ty E)
+    , tupleOf (ty E)
+      -- NOTE: This try is required since this conflicts with open braces on class declarations.
+    , try $ TRecord <$> braces (typeRow <|> ty E <|> pure TEmptyRow)
+    , angles (typeRow <|> pure TEmptyRow)
+    ]
+
+typeRow :: Parser Type
+typeRow = do
+  l <- try $ label <* reserved ":"
+  t <- ty E
+  TRowExtend l t <$> choice
+    [ reserved "|" *> ty E
+    , symbol "," *> typeRow
+    , pure TEmptyRow
     ]
 
 typeCon :: Parser TypeCon
 typeCon = choice
-  [ TypeConArrow <$ symbol "(->)"
-  , TypeConData <$> dataTypeConId
+  [ TypeConData <$> dataTypeConId
+  , try $ TypeConArrow <$ parens (reserved "->")
+  , try $ TypeConRecord <$ braces (reserved "_")
+  , TypeConEmptyRow <$ reserved "<>"
+  , try $ TypeConRowExtend <$> between (reserved "<+") (reserved ">") label
   ]
 
 parameter :: Parser Parameter
@@ -133,7 +165,7 @@ fundeps :: Parser [Fundep Parameter]
 fundeps = option mempty $ reserved "|" *> (fundep parameterId `sepBy` symbol ",")
 
 quantification :: Parser [Parameter]
-quantification = symbol "[" *> many parameter <* symbol "]"
+quantification = brackets (many parameter)
 
 context :: Parser [Constraint]
 context = option mempty $ reserved "where" *> choice
@@ -175,12 +207,18 @@ expr = \case
     , expr T
     ]
   T -> foldl1 (:@@) <$> some (expr F)
-  F -> choice
+  F -> prefixBy recordUpdate $ suffixBy recordSelect $ choice
     [ EVar . VVar <$> valueId
     , ECon <$> valueCon
     , ELit <$> literal
-    , parens (expr E)
+    , tupleOf (expr E)
+    , recordCreate
     ]
+ where
+  recordSelect = ERecordSelect <$ reserved "." <*> label
+  recordUpdate = RecordUpdate <$ reserved "%" <*> braces fields
+  recordCreate = RecordCreate <$> braces fields
+  fields = ((,) <$> label <* reserved "=" <*> expr E) `sepBy` symbol ","
 
 localDef :: Parser LocalDef
 localDef = LocalDef <$> valueId' <*> inferrable (reserved ":" *> scheme) <*> optional (reserved "=" *> expr E)
@@ -191,6 +229,11 @@ alt = (:->) <$> some (pat F) <* reserved "->" <*> expr E
 valueCon :: Parser ValueCon
 valueCon = choice
   [ ValueConData <$> dataValueConId
+  , ValueConEmptyRecord <$ symbol "{}"
+  , try $ ValueConRecordSelect <$> braces (reserved "." *> label)
+  , try $ ValueConRecordRestrict <$> braces (reserved "-" *> label)
+  , try $ ValueConRecordExtend <$> braces (reserved "+" *> label)
+  , try $ ValueConRecordUpdate <$> braces (reserved "%" *> label)
   ]
 
 def :: Parser Def
@@ -239,6 +282,12 @@ program = Program <$> many decl
 ------
 -- Lexer
 ------
+
+prefixBy :: Parser (a -> a) -> Parser a -> Parser a
+prefixBy p a = flip (foldr id) <$> many p <*> a
+
+suffixBy :: Parser (a -> a) -> Parser a -> Parser a
+suffixBy p a = foldl (&) <$> a <*> many p
 
 reservedWords :: [Name]
 reservedWords = ["let", "fun", "in", "val", "con", "data", "class", "instance", "default", "where", "dump"]
@@ -291,6 +340,12 @@ parens = between (symbol "(") (symbol ")")
 
 braces :: Parser a -> Parser a
 braces = between (symbol "{") (symbol "}")
+
+angles :: Parser a -> Parser a
+angles = between (reserved "<") (reserved ">")
+
+brackets :: Parser a -> Parser a
+brackets = between (symbol "[") (symbol "]")
 
 parsing :: Parser a -> String -> String -> Either Error a
 parsing p path text = case runParser (amb *> p <* eof) path text of

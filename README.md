@@ -29,6 +29,7 @@ This implementation is based on the implementation of [Typing Haskell in Haskell
 _a            // var (internal)
 *             // types of values
 ?             // constraints
+# k           // row kind
 k -> k        // function kind
 ```
 
@@ -36,9 +37,21 @@ k -> k        // function kind
 ```
 _a            // var (internal)
 Int           // con
+(->)          // con (arrow)
+{_}           // con (record)
+<>            // con (empty row)
+<+l>          // con (row extension)
 Pair a b      // app
-a -> b        // app (arrow)
 a             // quantified var
+
+// syntax sugar
+a -> b        // is equivalent to (->) a b
+{ a }         // is equivalent to {_} a
+{ ... }       // is equivalent to {_} <...>, if possible
+<l : a>       // is equivalent to <+l> a <>
+<l : a | r>   // is equivalent to <+l> a r
+<l : a, ...>  // is equivalent to <+l> a <...>
+(a, b, ...)   // is equivalent to { 0: a, 1: b, ... }
 ```
 
 ### Constraints
@@ -80,10 +93,23 @@ Pair a b      // decon
 ```
 x             // var
 Pair          // con
+{}            // con (empty record)
+{.l}          // con (record selection)
+{-l}          // con (record restriction)
+{+l}          // con (record extension)
+{%l}          // con (record updation)
 Pair a b      // app
 123           // lit
 let id = e, id = e in e    // let
 fun pats -> e | pats -> e  // lam
+
+// syntax sugar
+r.l                // is equivalent to {.l} r
+{ l = a }          // is equivalent to {+l} a {}
+{ l = a, ... }     // is equivalent to {+l} a { ... }
+%{ l = a } r       // is equivalent to {%l} a r
+%{ l = a, ... } r  // is equivalent to {%l} a (%{ ... } r)
+(a, b, ...)        // is equivalent to { 0 = a, 1 = b, ... }
 ```
 
 ### Declarations
