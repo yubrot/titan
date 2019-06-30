@@ -30,7 +30,13 @@ spec = describe "Titan.KindInference" $ do
       ==> "data Foo (a : *) { con Foo a }"
     "data Foo (a : *) { con Foo a }"
       ==> "data Foo (a : *) { con Foo a }"
+    "data Foo (a : * -> *)"
+      ==> "data Foo (a : * -> *)"
     "data Foo (a : * -> *) { con Foo a }"
+      ==>! \case CannotUnifyKind _ _ Mismatch -> True; _ -> False
+    "data Foo (a : # *)"
+      ==> "data Foo (a : # *)"
+    "data Foo (a : # *) { con Foo a }"
       ==>! \case CannotUnifyKind _ _ Mismatch -> True; _ -> False
     "data Foo a b { con Foo (a -> b) }"
       ==> "data Foo (a : *) (b : *) { con Foo (a -> b) }"
@@ -38,6 +44,22 @@ spec = describe "Titan.KindInference" $ do
       ==> "data Foo (m : * -> *) (a : *) { con Foo (m a) }"
     "data Foo (m : * -> *) a { con Foo (m a) }"
       ==> "data Foo (m : * -> *) (a : *) { con Foo (m a) }"
+    "data Foo a { con Foo { a } }"
+      ==> "data Foo (a : # *) { con Foo { a } }"
+    "data Foo { con Foo <> }"
+      ==>! \case CannotUnifyKind _ _ Mismatch -> True; _ -> False
+    "data Foo a { con Foo <hello : {} | a> }"
+      ==>! \case CannotUnifyKind _ _ Mismatch -> True; _ -> False
+    "data Foo a { con Foo { hello : {} | a } }"
+      ==> "data Foo (a : # *) { con Foo { hello : {} | a } }"
+    "data Foo a b { con Foo { hello : b | a } }"
+      ==> "data Foo (a : # *) (b : *) { con Foo { hello : b | a } }"
+    "data Foo a b { con Foo { hello : b | a } { b } }"
+      ==>! \case CannotUnifyKind _ _ Mismatch -> True; _ -> False
+    "data Foo a b { con Foo { hello : b | a } { a } }"
+      ==> "data Foo (a : # *) (b : *) { con Foo { hello : b | a } { a } }"
+    "data Foo m a { con Foo { m a } }"
+      ==> "data Foo (m : * -> # *) (a : *) { con Foo { m a } }"
     "data Foo (m : (* -> *) -> *) a { con Foo (m a) }"
       ==> "data Foo (m : (* -> *) -> *) (a : * -> *) { con Foo (m a) }"
     "data Foo m a { con Foo (m a) }"

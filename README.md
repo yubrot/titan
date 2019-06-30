@@ -13,8 +13,8 @@ This implementation is based on the implementation of [Typing Haskell in Haskell
 * [x] Multi-parameter type classes
 * [x] Pattern exhaustiveness/useless checker
 * [x] Functional dependencies
-* [ ] Row polymorphism
-* [ ] Effects
+* [x] Extensible records (row polymorphism)
+* [ ] Extensible effects
 
 ## Syntax overview
 

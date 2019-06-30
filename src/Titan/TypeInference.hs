@@ -12,6 +12,7 @@ import Titan.Error
 import Titan.TT
 import Titan.Scope
 import Titan.Substitution
+import Titan.Row
 import Titan.FunctionalDependency
 import Titan.DependencyAnalyzer (depGroups)
 import qualified Titan.PatternChecker as PC
@@ -582,6 +583,27 @@ mgu a b = mguElems emptySubst (a^..biplate) (b^..biplate)
   mguElems s [] [] = return s
   mguElems _ _ _ = throwError $ InternalError "KI" "Structure mismatch"
   mgu' a b = case (a, b) of
+    (Row fa a, Row fb b) | not (null fa) && not (null fb) -> do
+      let (u, fa', fb') = unifyLabels fa fb
+      let (as, bs) = unzip (toList u)
+      if null fa' || null fb' then
+        mgu (as ++ [Row fa' a]) (bs ++ [Row fb' b])
+      else do
+        s <- mgu as bs
+
+        (a, fb') <- pure $ apply s (a, fb')
+        tv <- case a of
+          TVar _ k lv -> newTVarOnLevel lv k
+          _ -> newTVar (KRow KType) -- dummy
+
+        s' <- mgu' a (Row fb' tv)
+
+        when (worthApply s' (vars topLevel b)) $ throwError $ CannotUnifyType a (Row fb' tv) OccursCheckFailed
+        (b, fa') <- pure $ apply (extend s' s) (b, fa')
+
+        s'' <- mgu' b (Row fa' tv)
+
+        return $ extend s'' $ extend s' s
     (TApp l r, TApp l' r') -> mgu [l, r] [l', r']
     (TVar id k lv, t) -> varBind (id, k, lv) t
     (t, TVar id k lv) -> varBind (id, k, lv) t
@@ -612,13 +634,18 @@ match a b = matchElems emptySubst (a^..biplate) (b^..biplate)
   matchElems s [] [] = return s
   matchElems _ _ _ = throwError MatchFailed
   match' a b = case (a, b) of
-    (TApp l r, TApp l' r') -> match [l, r] [l', r']
     (TVar id k lv, t) -> do
       k' <- kindOf t
       when (k /= k') $ throwError MatchFailed
       let adjustRequiredVars = [id' | TVar id' _ lv' <- universe t, isOnLevel (upLevel lv) lv']
       unless (null adjustRequiredVars) $ throwError MatchFailed
       return $ id +-> t
+    (Row fa a, Row fb b) | not (null fa) && not (null fb) -> do
+      let (u, fa', fb') = unifyLabels fa fb
+      unless (null fa') $ throwError MatchFailed
+      let (as, bs) = unzip (toList u)
+      match (as ++ [a]) (bs ++ [Row fb' b])
+    (TApp l r, TApp l' r') -> match [l, r] [l', r']
     (a, b) -> do
       when (a /= b) $ throwError MatchFailed
       return emptySubst
