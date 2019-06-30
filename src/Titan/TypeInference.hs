@@ -11,7 +11,7 @@ import Titan.Prelude
 import Titan.Error
 import Titan.TT
 import Titan.Scope
-import Titan.Unification
+import Titan.Substitution
 import Titan.FunctionalDependency
 import Titan.DependencyAnalyzer (depGroups)
 import qualified Titan.PatternChecker as PC
@@ -104,13 +104,13 @@ verifyInstances = do
       let t = indexParams (cls^.parameters) (a'^.arguments)
       let s = indexParams (cls^.parameters) (b'^.arguments)
       forM_ (cls^.fundeps) $ \fundep@(x :~> y) -> do
-        u <- runExceptT $ mgu @Type (t x) (s x)
+        u <- runExceptT $ mgu (t x) (s x)
         forMOf_ _Right u $ \u ->
           when (apply u (t y) /= apply u (s y)) $
             throwError $ ConsistencyConditionUnsatisfied a b fundep
 
       -- Eager overlapping check:
-      u <- runExceptT $ mgu @Type (a'^.arguments) (b'^.arguments)
+      u <- runExceptT $ mgu (a'^.arguments) (b'^.arguments)
       case u of
         Right _ -> throwError $ OverlappingInstances a b
         Left (CannotUnifyType _ _ _) -> return ()
@@ -433,7 +433,7 @@ updateEntailment premises s entail = update entail
             return entail
           Nothing ->
             buildEntailment premises p
-        when (entail /= entail') $ tell [entail']
+        tell [entail']
         return entail'
     | otherwise ->
         return entail
@@ -455,7 +455,7 @@ matchingInstances = \case
     insts <- resolveUse @_ @[Instance] id
     insts <- forM insts $ \inst -> do
       (vs, inst') <- instantiate inst
-      s <- runExceptT $ match @Type (inst'^.arguments) args
+      s <- runExceptT $ match (inst'^.arguments) args
       case s of
         Right s -> return $ Just (inst, apply s vs)
         Left MatchFailed -> return Nothing
@@ -474,7 +474,7 @@ improveByInstances = \case
       forM_ insts' $ \inst' -> do
         let t' = indexParams (cls^.parameters) (inst'^.arguments)
         let t = indexParams (cls^.parameters) args
-        s <- runExceptT $ match @Type (t' x) (t x)
+        s <- runExceptT $ match (t' x) (t x)
         -- TODO: Once we found an instance, we don't need to search further instance anymore.
         case s of
           Right s -> zipWithM_ unify (apply s (t' y)) (t y)
@@ -553,14 +553,68 @@ unify t1 t2 = do
   subst %= extend s'
 
 (<:) :: TI m => Type -> Type -> m ()
-l <: r = void $ match @Type r l `catchError` \case
+l <: r = void $ match r l `catchError` \case
   MatchFailed -> throwError $ CannotUnifyType l r SignatureTooGeneral
   err -> throwError err
 
 newTVar :: (MonadReader Scope m, MonadState TIState m) => Kind -> m Type
 newTVar k = do
   lv <- view level
-  typeIds %%= \ids -> (TVar (head ids) k lv, tail ids)
+  newTVarOnLevel lv k
+
+newTVarOnLevel :: MonadState TIState m => Level -> Kind -> m Type
+newTVarOnLevel lv k = typeIds %%= \ids -> (TVar (head ids) k lv, tail ids)
 
 newParameter :: MonadState TIState m => Kind -> m Parameter
 newParameter k = parameterIds %%= \ids -> (Parameter (head ids) (Typed Inferred k), tail ids)
+
+-- Compute the most general unifier.
+mgu :: (Data t, TI m) => t -> t -> m (Subst Type)
+mgu a b = mguElems emptySubst (a^..biplate) (b^..biplate)
+ where
+  mguElems s (a:as) (b:bs) = do
+    s' <- mgu' (apply s a) (apply s b)
+    mguElems (extend s' s) as bs
+  mguElems s [] [] = return s
+  mguElems _ _ _ = throwError $ InternalError "KI" "Structure mismatch"
+  mgu' a b = case (a, b) of
+    (TApp l r, TApp l' r') -> mgu [l, r] [l', r']
+    (TVar id k lv, t) -> varBind (id, k, lv) t
+    (t, TVar id k lv) -> varBind (id, k, lv) t
+    (a, b) -> do
+      when (a /= b) $ throwError $ CannotUnifyType a b Mismatch
+      return emptySubst
+  varBind (id, k, lv) t = if
+    | t == TVar id k lv ->
+        return emptySubst
+    | occurs id t ->
+        throwError $ CannotUnifyType (TVar id k lv) t OccursCheckFailed
+    | otherwise -> do
+        tk <- kindOf t
+        when (k /= tk) $ throwError $ InternalError "KI" "Kind mismatch"
+        adjustedVars <- sequence [(,) id' <$> newTVarOnLevel lv k' | TVar id' k' lv' <- universe t, isOnLevel (upLevel lv) lv']
+        return $ Subst $ Map.fromList $ (id, t) : adjustedVars
+
+-- Compute a substitution from lhs to rhs.
+-- If there are no suitable substitution, MatchFailed is thrown.
+match :: (Data t, TI m) => t -> t -> m (Subst Type)
+match a b = matchElems emptySubst (a^..biplate) (b^..biplate)
+ where
+  matchElems (Subst s) (a:as) (b:bs) = do
+    Subst s' <- match' a b
+    if and [s'^.at id == s^.at id | id <- Map.keys $ Map.intersection s' s]
+      then matchElems (Subst (Map.union s' s)) as bs
+      else throwError MatchFailed
+  matchElems s [] [] = return s
+  matchElems _ _ _ = throwError MatchFailed
+  match' a b = case (a, b) of
+    (TApp l r, TApp l' r') -> match [l, r] [l', r']
+    (TVar id k lv, t) -> do
+      k' <- kindOf t
+      when (k /= k') $ throwError MatchFailed
+      let adjustRequiredVars = [id' | TVar id' _ lv' <- universe t, isOnLevel (upLevel lv) lv']
+      unless (null adjustRequiredVars) $ throwError MatchFailed
+      return $ id +-> t
+    (a, b) -> do
+      when (a /= b) $ throwError MatchFailed
+      return emptySubst

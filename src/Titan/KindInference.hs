@@ -8,7 +8,7 @@ import Titan.Prelude
 import Titan.Error
 import Titan.TT
 import Titan.Scope
-import Titan.Unification
+import Titan.Substitution
 import Titan.DependencyAnalyzer (depGroups)
 
 data KIState = KIState
@@ -139,3 +139,24 @@ unify k1 k2 = do
 
 newKVar :: MonadState KIState m => m Kind
 newKVar = kindIds %%= \ids -> (KVar $ head ids, tail ids)
+
+-- Compute the most general unifier.
+mgu :: KI m => Kind -> Kind -> m (Subst Kind)
+mgu a b = case (a, b) of
+  (KFun l r, KFun l' r') -> do
+    s <- mgu l l'
+    s' <- mgu (apply s r) (apply s r')
+    return $ extend s' s
+  (KVar id, k) -> varBind id k
+  (k, KVar id) -> varBind id k
+  (a, b) -> do
+    when (a /= b) $ throwError $ CannotUnifyKind a b Mismatch
+    return emptySubst
+ where
+  varBind id k = if
+    | k == KVar id ->
+        return emptySubst
+    | occurs id k ->
+        throwError $ CannotUnifyKind (KVar id) k OccursCheckFailed
+    | otherwise ->
+        return $ id +-> k
