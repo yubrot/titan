@@ -138,4 +138,5 @@ dump(kind) data Free f a {
 - [Didier Rémy: Extension of ML type system with a sorted equational theory on types](https://hal.inria.fr/inria-00077006/document)
 - [LUC MARANGET: Warnings for pattern matching](http://moscova.inria.fr/~maranget/papers/warn/index.html)
 - [Mark P. Jones: Language and Program Design for Functional Dependencies](https://web.cecs.pdx.edu/~mpj/pubs/fundeps-design.pdf)
+- [Daan Leijen: Extensible records with scoped labels](https://www.microsoft.com/en-us/research/publication/extensible-records-with-scoped-labels/)
 
