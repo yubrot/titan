@@ -108,8 +108,8 @@ kind = \case
 
 label :: Parser Label
 label = choice
-  [ view name <$> valueId
-  , show <$> integer
+  [ LName . view name <$> valueId
+  , LIndex <$> integer
   ]
 
 ty :: E -> Parser Type

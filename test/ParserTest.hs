@@ -52,7 +52,7 @@ spec = describe "Titan.Parser" $ do
     test @Type "<>"
       `shouldBe` Right TEmptyRow
     test @Type "<+name>"
-      `shouldBe` Right (TCon (TypeConRowExtend "name"))
+      `shouldBe` Right (TCon (TypeConRowExtend (LName "name")))
     test @Type "a -> b -> a"
       `shouldBe` Right (var "a" :--> var "b" :--> var "a")
     test @Type "a -> Maybe a"
@@ -62,29 +62,29 @@ spec = describe "Titan.Parser" $ do
     test @Type "a (b c) d"
       `shouldBe` Right (var "a" :@@ (var "b" :@@ var "c") :@@ var "d")
     test @Type "<name : a>"
-      `shouldBe` Right (TRowExtend "name" (var "a") TEmptyRow)
+      `shouldBe` Right (TRowExtend (LName "name") (var "a") TEmptyRow)
     test @Type "<name : a | b>"
-      `shouldBe` Right (TRowExtend "name" (var "a") (var "b"))
+      `shouldBe` Right (TRowExtend (LName "name") (var "a") (var "b"))
     test @Type "<x : Int, y : Int>"
-      `shouldBe` Right (TRowExtend "x" (con "Int" []) (TRowExtend "y" (con "Int" []) TEmptyRow))
+      `shouldBe` Right (TRowExtend (LName "x") (con "Int" []) (TRowExtend (LName "y") (con "Int" []) TEmptyRow))
     test @Type "<x : Int, y : Int | a>"
-      `shouldBe` Right (TRowExtend "x" (con "Int" []) (TRowExtend "y" (con "Int" []) (var "a")))
+      `shouldBe` Right (TRowExtend (LName "x") (con "Int" []) (TRowExtend (LName "y") (con "Int" []) (var "a")))
     test @Type "Eff <name : a>"
-      `shouldBe` Right (con "Eff" [TRowExtend "name" (var "a") TEmptyRow])
+      `shouldBe` Right (con "Eff" [TRowExtend (LName "name") (var "a") TEmptyRow])
     test @Type "{ a }"
       `shouldBe` Right (TRecord (var "a"))
     test @Type "{}"
       `shouldBe` Right (TRecord TEmptyRow)
     test @Type "{ name : a }"
-      `shouldBe` Right (TRecord (TRowExtend "name" (var "a") TEmptyRow))
+      `shouldBe` Right (TRecord (TRowExtend (LName "name") (var "a") TEmptyRow))
     test @Type "{ name : a | b }"
-      `shouldBe` Right (TRecord (TRowExtend "name" (var "a") (var "b")))
+      `shouldBe` Right (TRecord (TRowExtend (LName "name") (var "a") (var "b")))
     test @Type "{ x : Int, y : Int }"
-      `shouldBe` Right (TRecord (TRowExtend "x" (con "Int" []) (TRowExtend "y" (con "Int" []) TEmptyRow)))
+      `shouldBe` Right (TRecord (TRowExtend (LName "x") (con "Int" []) (TRowExtend (LName "y") (con "Int" []) TEmptyRow)))
     test @Type "{ x : Int, y : Int | a }"
-      `shouldBe` Right (TRecord (TRowExtend "x" (con "Int" []) (TRowExtend "y" (con "Int" []) (var "a"))))
+      `shouldBe` Right (TRecord (TRowExtend (LName "x") (con "Int" []) (TRowExtend (LName "y") (con "Int" []) (var "a"))))
     test @Type "IO { name : String }"
-      `shouldBe` Right (con "IO" [TRecord (TRowExtend "name" (con "String" []) TEmptyRow)])
+      `shouldBe` Right (con "IO" [TRecord (TRowExtend (LName "name") (con "String" []) TEmptyRow)])
     test @Type "{ 0: Int, 1: Bool }"
       `shouldBe` Right (TupleCreate [con "Int" [], con "Bool" []])
     test @Type "()"
@@ -162,33 +162,33 @@ spec = describe "Titan.Parser" $ do
     test @Expr "{}"
       `shouldBe` Right (ECon ValueConEmptyRecord)
     test @Expr "{.foo}"
-      `shouldBe` Right (ECon (ValueConRecordSelect "foo"))
+      `shouldBe` Right (ECon (ValueConRecordSelect (LName "foo")))
     test @Expr "{-foo}"
-      `shouldBe` Right (ECon (ValueConRecordRestrict "foo"))
+      `shouldBe` Right (ECon (ValueConRecordRestrict (LName "foo")))
     test @Expr "{+foo}"
-      `shouldBe` Right (ECon (ValueConRecordExtend "foo"))
+      `shouldBe` Right (ECon (ValueConRecordExtend (LName "foo")))
     test @Expr "{%foo}"
-      `shouldBe` Right (ECon (ValueConRecordUpdate "foo"))
+      `shouldBe` Right (ECon (ValueConRecordUpdate (LName "foo")))
     test @Expr "Cons x xs"
       `shouldBe` Right (con "Cons" [var "x", var "xs"])
     test @Expr "123"
       `shouldBe` Right (ELit (LInteger 123))
     test @Expr "x.y"
-      `shouldBe` Right (ERecordSelect "y" (var "x"))
+      `shouldBe` Right (ERecordSelect (LName "y") (var "x"))
     test @Expr "x.y.z"
-      `shouldBe` Right (ERecordSelect "z" (ERecordSelect "y" (var "x")))
+      `shouldBe` Right (ERecordSelect (LName "z") (ERecordSelect (LName "y") (var "x")))
     test @Expr "f (a b).c d"
-      `shouldBe` Right (var "f" :@@ ERecordSelect "c" (var "a" :@@ var "b") :@@ var "d")
+      `shouldBe` Right (var "f" :@@ ERecordSelect (LName "c") (var "a" :@@ var "b") :@@ var "d")
     test @Expr "{ x = y }"
-      `shouldBe` Right (RecordCreate [("x", var "y")])
+      `shouldBe` Right (RecordCreate [(LName "x", var "y")])
     test @Expr "{ x = y, a = b }"
-      `shouldBe` Right (RecordCreate [("x", var "y"), ("a", var "b")])
+      `shouldBe` Right (RecordCreate [(LName "x", var "y"), (LName "a", var "b")])
     test @Expr "%{ x = y } z"
-      `shouldBe` Right (RecordUpdate [("x", var "y")] (var "z"))
+      `shouldBe` Right (RecordUpdate [(LName "x", var "y")] (var "z"))
     test @Expr "%{ x = y, a = b } c"
-      `shouldBe` Right (RecordUpdate [("x", var "y"), ("a", var "b")] (var "c"))
+      `shouldBe` Right (RecordUpdate [(LName "x", var "y"), (LName "a", var "b")] (var "c"))
     test @Expr "%{ x = y } { a = b }"
-      `shouldBe` Right (RecordUpdate [("x", var "y")] (RecordCreate [("a", var "b")]))
+      `shouldBe` Right (RecordUpdate [(LName "x", var "y")] (RecordCreate [(LName "a", var "b")]))
     test @Expr "f (a b) c"
       `shouldBe` Right (var "f" :@@ (var "a" :@@ var "b") :@@ var "c")
     test @Expr "{ 0 = a, 1 = b }"

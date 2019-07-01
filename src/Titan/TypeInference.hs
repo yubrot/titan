@@ -591,7 +591,7 @@ mgu a b = mguElems emptySubst (a^..biplate) (b^..biplate)
       else do
         s <- mgu as bs
 
-        (a, fb') <- pure $ apply s (a, fb')
+        (a, b, fa', fb') <- pure $ apply s (a, b, fa', fb')
         tv <- case a of
           TVar _ k lv -> newTVarOnLevel lv k
           _ -> newTVar (KRow KType) -- dummy
@@ -599,7 +599,7 @@ mgu a b = mguElems emptySubst (a^..biplate) (b^..biplate)
         s' <- mgu' a (Row fb' tv)
 
         when (worthApply s' (vars topLevel b)) $ throwError $ CannotUnifyType a (Row fb' tv) OccursCheckFailed
-        (b, fa') <- pure $ apply (extend s' s) (b, fa')
+        (b, fa') <- pure $ apply s' (b, fa')
 
         s'' <- mgu' b (Row fa' tv)
 

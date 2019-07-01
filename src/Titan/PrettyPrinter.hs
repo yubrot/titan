@@ -30,6 +30,11 @@ instance Pretty Kind where
     KRow k -> raw "# " . pprintsPrec 10 k
     KFun a b -> paren (0 < prec) (pprintsPrec 1 a . raw " -> " . pprintsPrec 0 b)
 
+instance Pretty Label where
+  pprintsPrec _ = \case
+    LName n -> raw n
+    LIndex i -> raw (show i)
+
 instance Pretty Type where
   pprintsPrec prec = \case
     TVar s _ _ -> raw "_" . pprintsPrec prec s
@@ -43,7 +48,7 @@ instance Pretty Type where
     TApp a b -> paren (9 < prec) (pprintsPrec 9 a . raw " " . pprintsPrec 10 b)
     TGen s -> pprintsPrec prec s
    where
-    prettyRow l a b = raw l . raw " : " . pprintsPrec 0 a . case b of
+    prettyRow l a b = pprints l . raw " : " . pprintsPrec 0 a . case b of
       TEmptyRow -> id
       TRowExtend l b c -> raw ", " . prettyRow l b c
       b -> raw " | " . pprintsPrec 0 b
@@ -54,7 +59,7 @@ instance Pretty TypeCon where
     TypeConArrow -> raw "(->)"
     TypeConRecord -> raw "{_}"
     TypeConEmptyRow -> raw "<>"
-    TypeConRowExtend l -> raw "<+" . raw l . raw ">"
+    TypeConRowExtend l -> raw "<+" . pprints l . raw ">"
 
 instance Pretty Parameter where
   pprintsPrec prec parameter = case parameter^.kind of
@@ -122,7 +127,7 @@ instance Pretty Expr where
   pprintsPrec prec = \case
     EVar s -> pprintsPrec prec s
     ECon s -> pprintsPrec prec s
-    ERecordSelect l a -> pprintsPrec 10 a . raw "." . raw l
+    ERecordSelect l a -> pprintsPrec 10 a . raw "." . pprints l
     TupleCreate (x:xs) -> raw "(" . cat ", " 0 x 0 xs . raw ")"
     RecordCreate (f:fs) -> raw "{ " . cat ", " 0 (PrettyField f) 0 (map PrettyField fs) . raw " }"
     RecordUpdate (f:fs) r -> raw "%{ " . cat ", " 0 (PrettyField f) 0 (map PrettyField fs) . raw " } " . pprintsPrec 10 r
@@ -140,7 +145,7 @@ instance Pretty Expr where
 newtype PrettyField = PrettyField (Label, Expr)
 
 instance Pretty PrettyField where
-  pprintsPrec _ (PrettyField (l, a)) = raw l . raw " = " . pprintsPrec 0 a
+  pprintsPrec _ (PrettyField (l, a)) = pprints l . raw " = " . pprintsPrec 0 a
 
 instance Pretty LocalDef where
   pprintsPrec _ def =
@@ -164,10 +169,10 @@ instance Pretty ValueCon where
   pprintsPrec _ = \case
     ValueConData s -> pprintsPrec 0 s
     ValueConEmptyRecord -> raw "{}"
-    ValueConRecordSelect l -> raw "{." . raw l . raw "}"
-    ValueConRecordRestrict l -> raw "{-" . raw l . raw "}"
-    ValueConRecordExtend l -> raw "{+" . raw l . raw "}"
-    ValueConRecordUpdate l -> raw "{%" . raw l . raw "}"
+    ValueConRecordSelect l -> raw "{." . pprints l . raw "}"
+    ValueConRecordRestrict l -> raw "{-" . pprints l . raw "}"
+    ValueConRecordExtend l -> raw "{+" . pprints l . raw "}"
+    ValueConRecordUpdate l -> raw "{%" . pprints l . raw "}"
 
 instance Pretty Def where
   pprintsPrec _ def =

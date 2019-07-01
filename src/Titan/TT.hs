@@ -100,10 +100,13 @@ newtype Level = Level
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
-type Label = Name
+data Label
+  = LName Name
+  | LIndex Integer
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 tupleLabels :: [Label]
-tupleLabels = map show [0..]
+tupleLabels = map LIndex [0..]
 
 data Type
   = TVar (Id Type) Kind Level
