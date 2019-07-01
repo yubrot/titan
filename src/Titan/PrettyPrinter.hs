@@ -2,6 +2,7 @@ module Titan.PrettyPrinter
   ( Pretty(..)
   , PrettyFundeps(..)
   , PrettyContext(..)
+  , PrettyField(..)
   , PrettyQuantification(..)
   ) where
 
@@ -26,20 +27,39 @@ instance Pretty Kind where
     KVar s -> raw "_" . pprintsPrec prec s
     KType -> raw "*"
     KConstraint -> raw "?"
+    KRow k -> raw "# " . pprintsPrec 10 k
     KFun a b -> paren (0 < prec) (pprintsPrec 1 a . raw " -> " . pprintsPrec 0 b)
+
+instance Pretty Label where
+  pprintsPrec _ = \case
+    LName n -> raw n
+    LIndex i -> raw (show i)
 
 instance Pretty Type where
   pprintsPrec prec = \case
     TVar s _ _ -> raw "_" . pprintsPrec prec s
     TCon s -> pprintsPrec prec s
-    TFun a b -> paren (0 < prec) (pprintsPrec 1 a . raw " -> " . pprintsPrec 0 b)
+    a :--> b -> paren (0 < prec) (pprintsPrec 1 a . raw " -> " . pprintsPrec 0 b)
+    TRecord TEmptyRow -> raw "{}"
+    TupleCreate (x:xs) -> raw "(" . cat ", " 0 x 0 xs . raw ")"
+    TRecord (TRowExtend l a b) -> raw "{ " . prettyRow l a b . raw " }"
+    TRecord s -> raw "{ " . pprintsPrec 0 s . raw " }"
+    TRowExtend l a b -> raw "<" . prettyRow l a b . raw ">"
     TApp a b -> paren (9 < prec) (pprintsPrec 9 a . raw " " . pprintsPrec 10 b)
     TGen s -> pprintsPrec prec s
+   where
+    prettyRow l a b = pprints l . raw " : " . pprintsPrec 0 a . case b of
+      TEmptyRow -> id
+      TRowExtend l b c -> raw ", " . prettyRow l b c
+      b -> raw " | " . pprintsPrec 0 b
 
 instance Pretty TypeCon where
   pprintsPrec prec = \case
     TypeConData s -> pprintsPrec prec s
     TypeConArrow -> raw "(->)"
+    TypeConRecord -> raw "{_}"
+    TypeConEmptyRow -> raw "<>"
+    TypeConRowExtend l -> raw "<+" . pprints l . raw ">"
 
 instance Pretty Parameter where
   pprintsPrec prec parameter = case parameter^.kind of
@@ -107,6 +127,10 @@ instance Pretty Expr where
   pprintsPrec prec = \case
     EVar s -> pprintsPrec prec s
     ECon s -> pprintsPrec prec s
+    ERecordSelect l a -> pprintsPrec 10 a . raw "." . pprints l
+    TupleCreate (x:xs) -> raw "(" . cat ", " 0 x 0 xs . raw ")"
+    RecordCreate (f:fs) -> raw "{ " . cat ", " 0 (PrettyField f) 0 (map PrettyField fs) . raw " }"
+    RecordUpdate (f:fs) r -> raw "%{ " . cat ", " 0 (PrettyField f) 0 (map PrettyField fs) . raw " } " . pprintsPrec 10 r
     EApp a b -> paren (9 < prec) (pprintsPrec 9 a . raw " " . pprintsPrec 10 b)
     ELit l -> pprintsPrec prec l
     ELet (bind :| binds) e -> paren (1 < prec) $
@@ -117,6 +141,11 @@ instance Pretty Expr where
     ELam (alt :| alts) -> paren (0 < prec) $
       raw "fun " .
       cat " | " 1 alt 1 alts
+
+newtype PrettyField = PrettyField (Label, Expr)
+
+instance Pretty PrettyField where
+  pprintsPrec _ (PrettyField (l, a)) = pprints l . raw " = " . pprintsPrec 0 a
 
 instance Pretty LocalDef where
   pprintsPrec _ def =
@@ -137,8 +166,13 @@ instance Pretty Value where
     VPatternDef id -> pprints id
 
 instance Pretty ValueCon where
-  pprint = \case
-    ValueConData s -> pprint s
+  pprintsPrec _ = \case
+    ValueConData s -> pprintsPrec 0 s
+    ValueConEmptyRecord -> raw "{}"
+    ValueConRecordSelect l -> raw "{." . pprints l . raw "}"
+    ValueConRecordRestrict l -> raw "{-" . pprints l . raw "}"
+    ValueConRecordExtend l -> raw "{+" . pprints l . raw "}"
+    ValueConRecordUpdate l -> raw "{%" . pprints l . raw "}"
 
 instance Pretty Def where
   pprintsPrec _ def =

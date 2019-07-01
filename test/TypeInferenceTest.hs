@@ -359,3 +359,92 @@ spec = describe "Titan.TypeInference" $ do
       ==> "val g : [(a : *) (b : *)] Pair a b where (F A a, F A b) = Pair (f A) (f A) data A { con A } data Pair (x : *) (y : *) { con Pair x y } class F (x : *) (y : *) { val f : [] x -> y }"
     "val g = Pair (f A) (f A) data A { con A } data Pair x y { con Pair x y } class F x y | x ~> y { val f : x -> y }"
       ==> "val g : [(a : *)] Pair a a where F A a = Pair (f A) (f A) data A { con A } data Pair (x : *) (y : *) { con Pair x y } class F (x : *) (y : *) | x ~> y { val f : [] x -> y }"
+  it "extensible records" $ do
+    "val f : {} = {}"
+      ==> "val f : [] {} = {}"
+    "val f : { x : A } = {} data A { con A }"
+      ==>! \case CannotUnifyType _ _ Mismatch -> True; _ -> False
+    "val f : {} = { x = A } data A { con A }"
+      ==>! \case CannotUnifyType _ _ Mismatch -> True; _ -> False
+    "val f : { x : A } = { x = A } data A { con A }"
+      ==> "val f : [] { x : A } = { x = A } data A { con A }"
+    "val f : { x : B } = { x = A } data A { con A } data B"
+      ==>! \case CannotUnifyType _ _ Mismatch -> True; _ -> False
+    "val f : { y : A } = { x = A } data A { con A }"
+      ==>! \case CannotUnifyType _ _ Mismatch -> True; _ -> False
+    "val f : { x : A, x : B } = { x = A, x = B } data A { con A } data B { con B }"
+      ==> "val f : [] { x : A, x : B } = { x = A, x = B } data A { con A } data B { con B }"
+    "val f : { x : B, x : A } = { x = A, x = B } data A { con A } data B { con B }"
+      ==>! \case CannotUnifyType _ _ Mismatch -> True; _ -> False
+    "val f : { y : B, x : A } = { x = A, y = B } data A { con A } data B { con B }"
+      ==> "val f : [] { y : B, x : A } = { x = A, y = B } data A { con A } data B { con B }"
+    "val f : { x : A | a } = { x = A } data A { con A }"
+      ==>! \case CannotUnifyType _ _ SignatureTooGeneral -> True; _ -> False
+    "val f : { a } val g : { a } = f data A"
+      ==> "val f : [(a : # *)] { a } val g : [(a : # *)] { a } = f data A"
+    "val f : { a } val g : { x : A | a } = f data A"
+      ==> "val f : [(a : # *)] { a } val g : [(a : # *)] { x : A | a } = f data A"
+    "val f : { x : A | a } val g : { x : B | a } = f data A data B"
+      ==>! \case CannotUnifyType _ _ Mismatch -> True; _ -> False
+    "val f : { x : A | a } val g : { y : B | a } = f data A data B"
+      ==>! \case CannotUnifyType _ _ SignatureTooGeneral -> True; _ -> False
+    "val f : { x : B, x : A | a } val g : { x : A | a } = f data A data B"
+      ==>! \case CannotUnifyType _ _ Mismatch -> True; _ -> False
+    "val f : { x : A, x : B | a } val g : { x : A | a } = f data A data B"
+      ==>! \case CannotUnifyType _ _ SignatureTooGeneral -> True; _ -> False
+    "val f : { x : A | a } val g : { x : b | a } = f data A"
+      ==>! \case CannotUnifyType _ _ SignatureTooGeneral -> True; _ -> False
+    "val f : { x : b | a } val g : { x : A | a } = f data A"
+      ==> "val f : [(b : *) (a : # *)] { x : b | a } val g : [(a : # *)] { x : A | a } = f data A"
+    "val f : { x : A | a } val g : { x : A, x : B | a } = f data A data B"
+      ==> "val f : [(a : # *)] { x : A | a } val g : [(a : # *)] { x : A, x : B | a } = f data A data B"
+    "val f : { x : A | a } val g : { x : B, x : A | a } = f data A data B"
+      ==>! \case CannotUnifyType _ _ Mismatch -> True; _ -> False
+    "val f : { x : A, y : B | a } val g : { y : B, x : A | a } = f data A data B"
+      ==> "val f : [(a : # *)] { x : A, y : B | a } val g : [(a : # *)] { y : B, x : A | a } = f data A data B"
+    "val f = {}"
+      ==> "val f : [] {} = {}"
+    "val f = { x = A } data A { con A }"
+      ==> "val f : [] { x : A } = { x = A } data A { con A }"
+    "val f = { x = A, y = B } data A { con A } data B { con B }"
+      ==> "val f : [] { x : A, y : B } = { x = A, y = B } data A { con A } data B { con B }"
+    "val f = { x = A, x = B } data A { con A } data B { con B }"
+      ==> "val f : [] { x : A, x : B } = { x = A, x = B } data A { con A } data B { con B }"
+    "val f = { x = f }"
+      ==>! \case CannotUnifyType _ _ OccursCheckFailed -> True; _ -> False
+    "val f = {.name}"
+      ==> "val f : [(a : *) (b : # *)] { name : a | b } -> a = {.name}"
+    "val f = {-name}"
+      ==> "val f : [(a : *) (b : # *)] { name : a | b } -> { b } = {-name}"
+    "val f = {+name}"
+      ==> "val f : [(a : *) (b : # *)] a -> { b } -> { name : a | b } = {+name}"
+    "val f = {%name}"
+      ==> "val f : [(a : *) (b : *) (c : # *)] a -> { name : b | c } -> { name : a | c } = {%name}"
+    "val f = fun r -> %{ x = A, y = B } r data A { con A } data B { con B }"
+      ==> "val f : [(a : *) (b : *) (c : # *)] { y : a, x : b | c } -> { x : A, y : B | c } = fun r -> %{ x = A, y = B } r data A { con A } data B { con B }"
+    "val f : (a, a) -> b val g = fun r -> f (r, {})"
+      ==> "val f : [(a : *) (b : *)] (a, a) -> b val g : [(c : *)] {} -> c = fun r -> f (r, {})"
+    "val f : (a, a) -> b val g = fun r -> f ({+x} A r, r) data A { con A }"
+      ==>! \case CannotUnifyType _ _ OccursCheckFailed -> True; _ -> False
+    "val f : (a, a) -> b val g = fun r -> f ({+x} A r, {+x} A r) data A { con A }"
+      ==> "val f : [(a : *) (b : *)] (a, a) -> b val g : [(c : # *) (d : *)] { c } -> d = fun r -> f ({+x} A r, {+x} A r) data A { con A }"
+    "val f : (a, a) -> b val g = fun r -> f ({+x} A r, {+x} B r) data A { con A } data B { con B }"
+      ==>! \case CannotUnifyType _ _ Mismatch -> True; _ -> False
+    "val f : (a, a) -> b val g = fun r -> f ({+x} A r, {+y} A r) data A { con A }"
+      ==>! \case CannotUnifyType _ _ OccursCheckFailed -> True; _ -> False
+    "val f = { x = A, y = B }.x data A { con A } data B { con B }"
+      ==> "val f : [] A = { x = A, y = B }.x data A { con A } data B { con B }"
+    "val f = { x = A, x = B }.x data A { con A } data B { con B }"
+      ==> "val f : [] A = { x = A, x = B }.x data A { con A } data B { con B }"
+    "val f = { x = A }.y data A { con A }"
+      ==>! \case CannotUnifyType _ _ Mismatch -> True; _ -> False
+    "val f = {-x} { x = A } data A { con A }"
+      ==> "val f : [] {} = {-x} { x = A } data A { con A }"
+    "val f = {-x} {}"
+      ==>! \case CannotUnifyType _ _ Mismatch -> True; _ -> False
+    "val f : (a, a) -> b val g = fun r -> f (r.a, r.b) r.c"
+      ==> "val f : [(a : *) (b : *)] (a, a) -> b val g : [(c : *) (d : *) (e : # *) (f : *)] { a : c, b : c, c : d | e } -> f = fun r -> f (r.a, r.b) r.c"
+    "val f = fun r -> {+l} r r"
+      ==> "val f : [(a : # *)] { a } -> { l : { a } | a } = fun r -> {+l} r r"
+    "val swap : (a, b) -> (b, a) = fun x -> (x.1, x.0)"
+      ==> "val swap : [(a : *) (b : *)] (a, b) -> (b, a) = fun x -> (x.1, x.0)"

@@ -36,6 +36,35 @@ pattern (:@@) a b <- (preview app -> Just (a, b))
 
 infixl 1 :@@
 
+class RecordCreate a where
+  recordCreate :: Prism' a [(Label, a)]
+
+pattern RecordCreate :: RecordCreate a => [(Label, a)] -> a
+pattern RecordCreate fields <- (preview recordCreate -> Just fields)
+  where RecordCreate fields = review recordCreate fields
+
+class RecordUpdate a where
+  recordUpdate :: Prism' a ([(Label, a)], a)
+
+pattern RecordUpdate :: RecordUpdate a => [(Label, a)] -> a -> a
+pattern RecordUpdate fields r <- (preview recordUpdate -> Just (fields, r))
+  where RecordUpdate fields r = review recordUpdate (fields, r)
+
+class TupleCreate a where
+  tupleCreate :: Prism' a [a]
+
+  default tupleCreate :: RecordCreate a => Prism' a [a]
+  tupleCreate = prism apply unapply
+   where
+    apply xs = RecordCreate (zip tupleLabels xs)
+    unapply = \case
+      RecordCreate (unzip -> (ls, xs)) | and (zipWith (==) tupleLabels ls) -> Right xs
+      x -> Left x
+
+pattern TupleCreate :: TupleCreate a => [a] -> a
+pattern TupleCreate ls <- (preview tupleCreate -> Just ls)
+  where TupleCreate ls = review tupleCreate ls
+
 data Explicitness
   = Explicit
   | Inferred
@@ -54,18 +83,30 @@ data Kind
   = KVar (Id Kind)
   | KType
   | KConstraint
+  | KRow Kind
   | KFun Kind Kind
   deriving (Eq, Ord, Show, Data, Typeable)
 
 instance Fun Kind where
-  fun = prism (uncurry KFun) $ \case
-    KFun a b -> Right (a, b)
-    k -> Left k
+  fun = prism apply unapply
+   where
+    apply = uncurry KFun
+    unapply = \case
+      KFun a b -> Right (a, b)
+      k -> Left k
 
 newtype Level = Level
   { _value :: Int
   }
   deriving (Eq, Ord, Show, Data, Typeable)
+
+data Label
+  = LName Name
+  | LIndex Integer
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+tupleLabels :: [Label]
+tupleLabels = map LIndex [0..]
 
 data Type
   = TVar (Id Type) Kind Level
@@ -75,17 +116,35 @@ data Type
   deriving (Eq, Ord, Show, Data, Typeable)
 
 instance Fun Type where
-  fun = prism (uncurry TFun) $ \case
-    TFun a b -> Right (a, b)
-    k -> Left k
+  fun = prism apply unapply
+   where
+    apply (a, b) = TCon TypeConArrow :@@ a :@@ b
+    unapply = \case
+      TCon TypeConArrow :@@ a :@@ b -> Right (a, b)
+      t -> Left t
 
 instance App Type where
-  app = prism (uncurry TApp) $ \case
-    TApp a b -> Right (a, b)
-    k -> Left k
+  app = prism apply unapply
+   where
+    apply = uncurry TApp
+    unapply = \case
+      TApp a b -> Right (a, b)
+      t -> Left t
 
-pattern TFun :: Type -> Type -> Type
-pattern TFun a b = TCon TypeConArrow :@@ a :@@ b
+instance RecordCreate Type where
+  recordCreate = prism rapply runapply . prism apply unapply
+   where
+    rapply = TRecord
+    runapply = \case
+      TRecord a -> Right a
+      t -> Left t
+    apply = foldr (\(l, a) r -> TRowExtend l a r) (TCon TypeConEmptyRow)
+    unapply = \case
+      TRowExtend l a (unapply -> Right fields) -> Right ((l, a) : fields)
+      TCon TypeConEmptyRow -> Right []
+      t -> Left t
+
+instance TupleCreate Type where
 
 -- FIXME: Do not depend on well-known types lexically.
 
@@ -95,9 +154,24 @@ pattern TChar = TCon (TypeConData (Id "Char"))
 pattern TListCon :: Type
 pattern TListCon = TCon (TypeConData (Id "List"))
 
+-- { a }
+pattern TRecord :: Type -> Type
+pattern TRecord a = TCon TypeConRecord :@@ a
+
+-- <>
+pattern TEmptyRow :: Type
+pattern TEmptyRow = TCon TypeConEmptyRow
+
+-- <l : a | r>
+pattern TRowExtend :: Label -> Type -> Type -> Type
+pattern TRowExtend l a r = TCon (TypeConRowExtend l) :@@ a :@@ r
+
 data TypeCon
   = TypeConData (Id DataTypeCon)
   | TypeConArrow
+  | TypeConRecord
+  | TypeConEmptyRow
+  | TypeConRowExtend Label
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data Parameter = Parameter
@@ -160,9 +234,41 @@ data Expr
   deriving (Eq, Ord, Show, Data, Typeable)
 
 instance App Expr where
-  app = prism (uncurry EApp) $ \case
-    EApp a b -> Right (a, b)
-    k -> Left k
+  app = prism apply unapply
+   where
+    apply = uncurry EApp
+    unapply = \case
+      EApp a b -> Right (a, b)
+      e -> Left e
+
+instance RecordCreate Expr where
+  recordCreate = prism apply unapply
+   where
+    apply = foldr (\(l, a) r -> ECon (ValueConRecordExtend l) :@@ a :@@ r) (ECon ValueConEmptyRecord)
+    unapply = \case
+      ECon (ValueConRecordExtend l) :@@ a :@@ RecordCreate fields -> Right ((l, a) : fields)
+      ECon ValueConEmptyRecord -> Right []
+      t -> Left t
+
+instance RecordUpdate Expr where
+  recordUpdate = prism apply unapply
+   where
+    apply (fields, r) = foldr (\(l, a) r -> ECon (ValueConRecordUpdate l) :@@ a :@@ r) r fields
+    unapply = \case
+      ECon (ValueConRecordUpdate l) :@@ a :@@ RecordUpdate fields r -> Right ((l, a) : fields, r)
+      t -> Right ([], t)
+
+instance TupleCreate Expr where
+
+pattern ELet1 :: LocalDef -> Expr -> Expr
+pattern ELet1 d e = ELet (d :| []) e
+
+pattern ELam1 :: Alt -> Expr
+pattern ELam1 a = ELam (a :| [])
+
+-- r.l
+pattern ERecordSelect :: Label -> Expr -> Expr
+pattern ERecordSelect l r = ECon (ValueConRecordSelect l) :@@ r
 
 data LocalDef = LocalDef
   { _ident :: Id LocalDef
@@ -170,12 +276,6 @@ data LocalDef = LocalDef
   , _body :: Maybe Expr
   }
   deriving (Eq, Ord, Show, Data, Typeable)
-
-pattern ELet1 :: LocalDef -> Expr -> Expr
-pattern ELet1 d e = ELet (d :| []) e
-
-pattern ELam1 :: Alt -> Expr
-pattern ELam1 a = ELam (a :| [])
 
 data Alt = (:->)
   { _patterns :: NonEmpty Pattern
@@ -193,6 +293,11 @@ data Value
 
 data ValueCon
   = ValueConData (Id DataValueCon)
+  | ValueConEmptyRecord
+  | ValueConRecordSelect Label
+  | ValueConRecordRestrict Label
+  | ValueConRecordExtend Label
+  | ValueConRecordUpdate Label
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data Def = Def

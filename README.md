@@ -13,8 +13,8 @@ This implementation is based on the implementation of [Typing Haskell in Haskell
 * [x] Multi-parameter type classes
 * [x] Pattern exhaustiveness/useless checker
 * [x] Functional dependencies
-* [ ] Row polymorphism
-* [ ] Effects
+* [x] Extensible records (row polymorphism)
+* [ ] Extensible effects
 
 ## Syntax overview
 
@@ -29,6 +29,7 @@ This implementation is based on the implementation of [Typing Haskell in Haskell
 _a            // var (internal)
 *             // types of values
 ?             // constraints
+# k           // row kind
 k -> k        // function kind
 ```
 
@@ -36,9 +37,21 @@ k -> k        // function kind
 ```
 _a            // var (internal)
 Int           // con
+(->)          // con (arrow)
+{_}           // con (record)
+<>            // con (empty row)
+<+l>          // con (row extension)
 Pair a b      // app
-a -> b        // app (arrow)
 a             // quantified var
+
+// syntax sugar
+a -> b        // is equivalent to (->) a b
+{ a }         // is equivalent to {_} a
+{ ... }       // is equivalent to {_} <...>, if possible
+<l : a>       // is equivalent to <+l> a <>
+<l : a | r>   // is equivalent to <+l> a r
+<l : a, ...>  // is equivalent to <+l> a <...>
+(a, b, ...)   // is equivalent to { 0: a, 1: b, ... }
 ```
 
 ### Constraints
@@ -80,10 +93,23 @@ Pair a b      // decon
 ```
 x             // var
 Pair          // con
+{}            // con (empty record)
+{.l}          // con (record selection)
+{-l}          // con (record restriction)
+{+l}          // con (record extension)
+{%l}          // con (record updation)
 Pair a b      // app
 123           // lit
 let id = e, id = e in e    // let
 fun pats -> e | pats -> e  // lam
+
+// syntax sugar
+r.l                // is equivalent to {.l} r
+{ l = a }          // is equivalent to {+l} a {}
+{ l = a, ... }     // is equivalent to {+l} a { ... }
+%{ l = a } r       // is equivalent to {%l} a r
+%{ l = a, ... } r  // is equivalent to {%l} a (%{ ... } r)
+(a, b, ...)        // is equivalent to { 0 = a, 1 = b, ... }
 ```
 
 ### Declarations
@@ -138,4 +164,5 @@ dump(kind) data Free f a {
 - [Didier Rémy: Extension of ML type system with a sorted equational theory on types](https://hal.inria.fr/inria-00077006/document)
 - [LUC MARANGET: Warnings for pattern matching](http://moscova.inria.fr/~maranget/papers/warn/index.html)
 - [Mark P. Jones: Language and Program Design for Functional Dependencies](https://web.cecs.pdx.edu/~mpj/pubs/fundeps-design.pdf)
+- [Daan Leijen: Extensible records with scoped labels](https://www.microsoft.com/en-us/research/publication/extensible-records-with-scoped-labels/)
 

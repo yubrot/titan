@@ -232,6 +232,9 @@ instance KindOf TypeCon where
   kindOf = \case
     TypeConData id -> kindOf id
     TypeConArrow -> pure $ KType :--> KType :--> KType
+    TypeConRecord -> pure $ KRow KType :--> KType
+    TypeConEmptyRow -> pure $ KRow KType -- TODO: # a
+    TypeConRowExtend _ -> pure $ KType :--> KRow KType :--> KRow KType -- TODO: a -> # a -> # a
 
 instance KindOf Parameter where
   kindOf p = case p^?kind.typed of
@@ -270,7 +273,25 @@ instance TypeOf Value where
 
 instance TypeOf ValueCon where
   typeOf = \case
-    ValueConData id -> typeOf id
+    ValueConData id ->
+      typeOf id
+    ValueConEmptyRecord ->
+      pure $ Scheme (Typed Explicit []) (TRecord TEmptyRow) []
+    ValueConRecordSelect l ->
+      pure $ Scheme (Typed Explicit [rp, ap]) (TRecord (TRowExtend l a r) :--> a) []
+    ValueConRecordRestrict l ->
+      pure $ Scheme (Typed Explicit [rp, ap]) (TRecord (TRowExtend l a r) :--> TRecord r) []
+    ValueConRecordExtend l ->
+      pure $ Scheme (Typed Explicit [rp, ap]) (a :--> TRecord r :--> TRecord (TRowExtend l a r)) []
+    ValueConRecordUpdate l ->
+      pure $ Scheme (Typed Explicit [rp, ap, bp]) (a :--> TRecord (TRowExtend l b r) :--> TRecord (TRowExtend l a r)) []
+   where
+    rp = Parameter (Id "r") (Typed Explicit (KRow KType))
+    ap = Parameter (Id "a") (Typed Explicit KType)
+    bp = Parameter (Id "b") (Typed Explicit KType)
+    r = TGen (Id "r")
+    a = TGen (Id "a")
+    b = TGen (Id "b")
 
 instance TypeOf Def where
   typeOf def = case def^.scheme of
