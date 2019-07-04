@@ -6,10 +6,10 @@ import Test.Hspec
 import Titan
 import Titan.Prelude
 
-test :: String -> Either Error String
-test code = fmap (pprint . program) (parse "test" code >>= bind emptyGlobal >>= resolve)
+test :: Text -> Either Error Text
+test code = fmap (pretty . program) (parse "test" code >>= bind emptyGlobal >>= resolve)
 
-(==>) :: HasCallStack => String -> Either Error String -> Expectation
+(==>) :: HasCallStack => Text -> Either Error Text -> Expectation
 code ==> result = case result of
   Left e ->
     test code `shouldBe` Left e

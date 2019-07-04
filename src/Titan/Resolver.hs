@@ -25,7 +25,7 @@ instance (Resolvable a a, Identified a) => JustifyUse (Id a) where
 
 instance JustifyUse Kind where
   justifyUse = \case
-    KVar id -> throwError $ InternalError "Input" $ "Escaped kind variable _" ++ id^.name
+    KVar id -> throwError $ InternalError "Input" $ "Escaped kind variable _" <> id^.name
     KType -> pure KType
     KConstraint -> pure KConstraint
     KRow a -> KRow <$> justifyUse a
@@ -33,7 +33,7 @@ instance JustifyUse Kind where
 
 instance JustifyUse Type where
   justifyUse = \case
-    TVar id _ _ -> throwError $ InternalError "Input" $ "Escaped type variable _" ++ id^.name
+    TVar id _ _ -> throwError $ InternalError "Input" $ "Escaped type variable _" <> id^.name
     TCon tc -> TCon <$> justifyUse tc
     TApp a b -> TApp <$> justifyUse a <*> justifyUse b
     TGen id -> pure $ TGen id -- collect later: see quantifyFreeParams / verifyNoFreeParams

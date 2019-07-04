@@ -1,5 +1,6 @@
 module Titan.TT where
 
+import qualified Data.Text as Text
 import Titan.Prelude
 
 data Typing a
@@ -70,7 +71,7 @@ data Explicitness
   | Inferred
   deriving (Eq, Ord, Show, Data, Typeable)
 
-type Name = String
+type Name = Text
 
 type Arity = Int
 
@@ -209,7 +210,7 @@ data Literal
   = LInteger Integer
   | LChar Char
   | LFloat Double
-  | LString String
+  | LString Text
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data Pattern
@@ -401,7 +402,7 @@ ids :: [Id a]
 ids = do
   i <- [1..]
   s <- replicateM i ['a'..'z']
-  return $ Id s
+  return $ Id $ Text.pack s
 
 topLevel :: Level
 topLevel = Level 0

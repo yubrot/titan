@@ -6,6 +6,7 @@ module Titan.Parser
 import Control.Monad.Combinators.NonEmpty (some, sepBy1)
 import qualified Data.Char as Char
 import qualified Data.List.NonEmpty as NonEmpty
+import qualified Data.Text as Text
 import Text.Megaparsec hiding (label, parse, some, sepBy1)
 import qualified Text.Megaparsec.Char as C
 import qualified Text.Megaparsec.Char.Lexer as L
@@ -13,10 +14,10 @@ import Titan.Prelude hiding (many, some)
 import Titan.Error
 import Titan.TT hiding (kind, scheme, fundeps, quantification, context)
 
-type Parser = Parsec Void String
+type Parser = Parsec Void Text
 
 class Parse a where
-  parse :: String -> String -> Either Error a
+  parse :: FilePath -> Text -> Either Error a
   parse = parsing p
   p :: Parser a
 
@@ -302,10 +303,10 @@ lexeme :: Parser a -> Parser a
 lexeme = L.lexeme amb
 
 lowerIdentifier :: Parser Name
-lowerIdentifier = lexeme $ (:) <$> C.lowerChar <*> many identifierChar
+lowerIdentifier = lexeme $ Text.pack <$> ((:) <$> C.lowerChar <*> many identifierChar)
 
 upperIdentifier :: Parser Name
-upperIdentifier = lexeme $ (:) <$> C.upperChar <*> many identifierChar
+upperIdentifier = lexeme $ Text.pack <$> ((:) <$> C.upperChar <*> many identifierChar)
 
 identifierChar :: Parser Char
 identifierChar = C.alphaNumChar <|> C.char '_'
@@ -320,20 +321,20 @@ float :: Parser Double
 float = lexeme L.float
 
 char :: Parser Char
-char = lexeme (C.char '\'' *> L.charLiteral <* C.char '\'')
+char = lexeme $ C.char '\'' *> L.charLiteral <* C.char '\''
 
-string :: Parser String
-string = lexeme (C.char '"' *> manyTill L.charLiteral (C.char '"'))
+string :: Parser Text
+string = lexeme $ C.char '"' *> (Text.pack <$> manyTill L.charLiteral (C.char '"'))
 
-symbol :: String -> Parser ()
+symbol :: Text -> Parser ()
 symbol = lexeme . void . C.string
 
 reserved :: Name -> Parser ()
 reserved s = if
-  | Char.isLetter (head s) ->
+  | Char.isLetter (Text.head s) ->
       lexeme $ try $ void (C.string s) >> notFollowedBy identifierChar
   | otherwise ->
-      lexeme $ try $ void (C.string s) >> notFollowedBy (satisfy (`elem` s))
+      lexeme $ try $ void (C.string s) >> notFollowedBy (satisfy (\c -> Text.any (== c) s))
 
 parens :: Parser a -> Parser a
 parens = between (symbol "(") (symbol ")")
@@ -347,7 +348,7 @@ angles = between (reserved "<") (reserved ">")
 brackets :: Parser a -> Parser a
 brackets = between (symbol "[") (symbol "]")
 
-parsing :: Parser a -> String -> String -> Either Error a
+parsing :: Parser a -> FilePath -> Text -> Either Error a
 parsing p path text = case runParser (amb *> p <* eof) path text of
-  Left e -> Left $ ParseError $ errorBundlePretty e
+  Left e -> Left $ ParseError $ Text.pack $ errorBundlePretty e
   Right r -> Right r

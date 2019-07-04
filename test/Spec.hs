@@ -25,7 +25,7 @@ main = hspec $ do
     stdFiles <- runIO stdFiles
     testStd emptyGlobal stdFiles
 
-testStd :: Global -> [(String, String)] -> Spec
+testStd :: Global -> [(FilePath, Text)] -> Spec
 testStd _ [] = return ()
 testStd global ((path, code):rest) = do
   let parse' = parse @Program path
@@ -34,7 +34,7 @@ testStd global ((path, code):rest) = do
 
   describe path $ do
     it "parse" $ parse' code `shouldSatisfy` isRight
-    it "pprint" $ (parse' code >>= parse' . pprint) `shouldBe` parse' code
+    it "pprint" $ (parse' code >>= parse' . pretty) `shouldBe` parse' code
     it "bind" $ test pure code
     it "resolve" $ test resolve code
     it "ki" $ test (resolve >=> ki) code

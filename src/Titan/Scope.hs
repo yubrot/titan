@@ -149,7 +149,7 @@ class Resolvable a b where
   resolveUse :: (MonadReader Scope m, MonadError Error m) => Id a -> m b
   resolveUse id = asks (tryResolveUse id) >>= \case
     Just b -> pure b
-    _ -> throwError $ InternalError "Resolver" $ "Escaped use of " ++ id^.name
+    _ -> throwError $ InternalError "Resolver" $ "Escaped use of " <> id^.name
 
 tryResolveUse' :: Resolvable a a => Id a -> Scope -> Maybe a
 tryResolveUse' = tryResolveUse

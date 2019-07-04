@@ -7,8 +7,8 @@ import Test.Hspec
 import Titan
 import Titan.Prelude
 
-test :: forall a. Pretty a => a -> String
-test = pprint
+test :: forall a. Pretty a => a -> Text
+test = pretty
 
 spec :: Spec
 spec = describe "Titan.PrettyPrinter" $ do

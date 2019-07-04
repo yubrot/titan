@@ -1,5 +1,6 @@
 module Main where
 
+import qualified Data.Text.IO
 import System.Environment (getArgs)
 import System.IO (stderr, hPutStrLn)
 import Titan
@@ -14,12 +15,12 @@ main = do
     Right g -> mapM_ (putStrLn . pprint) (dump g)
     Left e -> hPutStrLn stderr $ show e
 
-analyze :: Global -> (String, String) -> Either Error Global
+analyze :: Global -> (FilePath, Text) -> Either Error Global
 analyze global (path, code) = ti =<< ki =<< resolve =<< bind global =<< parse path code
 
-argFiles :: IO [(String, String)]
+argFiles :: IO [(FilePath, Text)]
 argFiles = do
   paths <- getArgs
   forM paths $ \path -> do
-    contents <- readFile path
+    contents <- Data.Text.IO.readFile path
     return (path, contents)

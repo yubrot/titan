@@ -6,13 +6,13 @@ import Test.Hspec
 import Titan
 import Titan.Prelude
 
-test :: String -> Either Error String
-test code = fmap (pprint . program) (parse "test" code >>= bind emptyGlobal >>= resolve >>= ki >>= ti)
+test :: Text -> Either Error Text
+test code = fmap (pretty . program) (parse "test" code >>= bind emptyGlobal >>= resolve >>= ki >>= ti)
 
-(==>) :: HasCallStack => String -> String -> Expectation
+(==>) :: HasCallStack => Text -> Text -> Expectation
 code ==> result = forM_ [code, result] $ \code -> test code `shouldBe` Right result
 
-(==>!) :: HasCallStack => String -> (Error -> Bool) -> Expectation
+(==>!) :: HasCallStack => Text -> (Error -> Bool) -> Expectation
 code ==>! f = test code `shouldSatisfy` \case Left e -> f e; _ -> False
 
 spec :: Spec

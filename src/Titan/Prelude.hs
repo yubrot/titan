@@ -16,6 +16,7 @@ module Titan.Prelude
   , module Data.Map
   , module Data.Maybe
   , module Data.Set
+  , module Data.Text
   , module Data.Traversable
   , module Data.Void
   , module Debug.Trace
@@ -40,6 +41,7 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import Data.Maybe
 import Data.Set (Set)
+import Data.Text (Text)
 import Data.Traversable
 import Data.Void
 import Debug.Trace

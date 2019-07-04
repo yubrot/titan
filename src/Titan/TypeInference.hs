@@ -7,6 +7,7 @@ import qualified Data.List as List
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Data.Text as Text
 import Titan.Prelude
 import Titan.Error
 import Titan.TT
@@ -176,8 +177,8 @@ tiExpr ty = \case
     alts <- mapM (tiAlt arity ty) alts
     rows <- mapM (mapM simplifyPattern) $ toList (fmap (^..patterns.each) alts)
     case PC.check rows of
-      PC.Useless ps -> throwError $ UselessPattern $ show ps
-      PC.NonExhaustive rows -> throwError $ NonExhaustivePattern $ map show rows
+      PC.Useless ps -> throwError $ UselessPattern $ Text.pack $ show ps
+      PC.NonExhaustive rows -> throwError $ NonExhaustivePattern $ map (Text.pack . show) rows
       PC.Complete -> return $ ELam alts
 
 simplifyPattern :: (MonadReader Scope m, MonadError Error m) => Pattern -> m PC.Pat

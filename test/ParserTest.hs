@@ -7,7 +7,7 @@ import Test.Hspec
 import Titan
 import Titan.Prelude
 
-test :: forall a. Parse a => String -> Either Error a
+test :: forall a. Parse a => Text -> Either Error a
 test = parse "test"
 
 spec :: Spec

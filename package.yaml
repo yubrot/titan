@@ -41,6 +41,7 @@ default-extensions:
 - MultiWayIf
 - NamedFieldPuns
 - NoImplicitPrelude
+- OverloadedStrings
 - PatternSynonyms
 - RankNTypes
 - ScopedTypeVariables
@@ -52,8 +53,9 @@ default-extensions:
 dependencies:
 - base >= 4.7 && < 5
 - containers
-- mtl
 - lens
+- mtl
+- text
 
 library:
   source-dirs: src

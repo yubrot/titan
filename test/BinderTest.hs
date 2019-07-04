@@ -6,8 +6,8 @@ import Test.Hspec
 import Titan
 import Titan.Prelude
 
-test :: String -> Either Error String
-test code = fmap (pprint . program) (parse "test" code >>= bind emptyGlobal)
+test :: Text -> Either Error Text
+test code = fmap (pretty . program) (parse "test" code >>= bind emptyGlobal)
 
 spec :: Spec
 spec = describe "Titan.Binder" $ do

@@ -6,6 +6,7 @@ module Titan.PrettyPrinter
   , PrettyQuantification(..)
   ) where
 
+import qualified Data.Text as Text
 import Titan.Prelude
 import Titan.TT
 
@@ -13,14 +14,18 @@ class Pretty a where
   {-# MINIMAL pprintsPrec | pprint #-}
   pprintsPrec :: Int -> a -> ShowS
   pprintsPrec _ x s = pprint x ++ s
+
   pprint :: a -> String
   pprint x = pprints x ""
+
+  pretty :: a -> Text
+  pretty = Text.pack . pprint
 
 pprints :: Pretty a => a -> ShowS
 pprints = pprintsPrec 0
 
 instance Pretty (Id a) where
-  pprint id = id^.name
+  pprint id = Text.unpack (id^.name)
 
 instance Pretty Kind where
   pprintsPrec prec = \case
@@ -32,7 +37,7 @@ instance Pretty Kind where
 
 instance Pretty Label where
   pprintsPrec _ = \case
-    LName n -> raw n
+    LName n -> raw (Text.unpack n)
     LIndex i -> raw (show i)
 
 instance Pretty Type where

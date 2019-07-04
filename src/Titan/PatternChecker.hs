@@ -15,6 +15,7 @@ module Titan.PatternChecker
 
 import qualified Data.List as List
 import qualified Data.Set as Set
+import qualified Data.Text as Text
 import Titan.Prelude
 import Titan.TT (Name, Arity, Literal(..))
 
@@ -129,7 +130,7 @@ instance Show Tag where
       LChar c -> show c
       LFloat d -> show d
       LString s -> show s
-    TagClosed (name, _) _ -> name
+    TagClosed (name, _) _ -> Text.unpack name
 
 class Incompatible a where
   (##) :: a -> a -> Bool
