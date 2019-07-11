@@ -3,7 +3,7 @@ module Titan.Error
   , UnifyFailReason(..)
   ) where
 
-import qualified Data.Text as Text
+import Data.Text.Prettyprint.Doc
 import Titan.Prelude
 import Titan.TT
 import Titan.PrettyPrinter
@@ -21,45 +21,80 @@ data Error
   | CyclicClasses [Name]
   | FundepsAreWeakerThanSuperclasses ClassCon (Fundep Parameter)
   | OverlappingInstances Instance Instance
-  | CoverageConditionUnsatisfied Instance (Fundep Parameter)
-  | ConsistencyConditionUnsatisfied Instance Instance (Fundep Parameter)
+  | CoverageConditionUnsatisfied Instance ClassCon (Fundep Parameter)
+  | ConsistencyConditionUnsatisfied Instance Instance ClassCon (Fundep Parameter)
   | NoMatchingInstances [Constraint] Constraint
   | InstanceResolutionExhausted Constraint
   | CannotResolveAmbiguity (Id Type) [Constraint]
-  | UselessPattern Text
-  | NonExhaustivePattern [Text]
-  deriving (Eq, Ord, Data, Typeable)
+  | UselessPattern [Doc ()]
+  | NonExhaustivePattern [[Doc ()]]
+  deriving (Show, Typeable)
 
 data UnifyFailReason
   = Mismatch
   | OccursCheckFailed
   | SignatureTooGeneral
-  deriving (Eq, Ord, Data, Typeable)
+  deriving (Show, Typeable)
 
-instance Show Error where
-  show = Text.unpack . \case
-    InternalError cause s -> "[" <> cause <> "] Internal error: " <> s
-    ParseError s -> "Parse error: " <> s
-    MultipleDeclarationsOf s -> "Multiple declarations of " <> s
-    MultipleDefault -> "Multiple default is not allowed"
-    CannotResolve s -> "Cannot resolve " <> s
-    CannotUnifyKind a b reason -> "Cannot unify kind " <> pretty a <> " with " <> pretty b <> Text.pack (show reason)
-    CannotUnifyType a b reason -> "Cannot unify type " <> pretty a <> " with " <> pretty b <> Text.pack (show reason)
-    ArityMismatch expected actual -> "Arity mismatch: expected " <> Text.pack (show expected) <> " arguments but got " <> Text.pack (show actual)
-    MatchFailed -> "Cannot match type"
-    CyclicClasses classes -> "Cyclic classes: " <> foldr1 (\a b -> a <> ", " <> b) classes
-    FundepsAreWeakerThanSuperclasses cls fundep -> "Functional dependencies are weaker than superclasses: " <> pretty cls <> " should have a functional dependency stricter than " <> pretty fundep
-    OverlappingInstances a b -> "Overlapping instances: " <> pretty a <> " and " <> pretty b
-    CoverageConditionUnsatisfied inst fundep -> "Coverage condition unsatisfied for " <> pretty fundep <> ": " <> pretty inst
-    ConsistencyConditionUnsatisfied a b fundep -> "Consistency condition unsatisfied for " <> pretty fundep <> ": " <> pretty a <> " and " <> pretty b
-    NoMatchingInstances ps p -> "No matching instances for " <> pretty p <> pretty (PrettyContext ps)
-    InstanceResolutionExhausted p -> "Instance resolution exhausted for " <> pretty p
-    CannotResolveAmbiguity a ps -> "Cannot resolve ambiguity for _" <> pretty a <> pretty (PrettyContext ps)
-    UselessPattern p -> "Useless pattern: " <> p
-    NonExhaustivePattern ps -> "Non exhaustive pattern: " <> foldr1 (\a b -> a <> " | " <> b) ps
+instance Pretty Error where
+  pretty = \case
+    InternalError cause s ->
+      brackets (pretty cause) <+> "Internal error:" <+> pretty s
+    ParseError s ->
+      "Parse error:" <+> pretty s
+    MultipleDeclarationsOf s ->
+      "Multiple declarations of" <+> pretty s
+    MultipleDefault ->
+      "Multiple default is not allowed"
+    CannotResolve s ->
+      "Cannot resolve" <+> pretty s
+    CannotUnifyKind a b reason -> sep
+      [ hang 2 $ vsep ["Cannot unify kind", prettyInline 0 a]
+      , hang 2 $ vsep ["with kind", prettyInline 0 b]
+      , pretty reason
+      ]
+    CannotUnifyType a b reason -> sep
+      [ hang 2 $ vsep ["Cannot unify type", prettyInline 0 a]
+      , hang 2 $ vsep ["with type", prettyInline 0 b]
+      , pretty reason
+      ]
+    ArityMismatch expected actual ->
+      "Arity mismatch: expected" <+> pretty expected <+> "arguments but got" <+> pretty actual
+    MatchFailed ->
+      "Cannot match type"
+    CyclicClasses classes ->
+      hang 2 $ sep $ "Cyclic classes:" : punctuate comma (map pretty classes)
+    FundepsAreWeakerThanSuperclasses cls fundep -> sep
+      [ hang 2 $ vsep ["Functional dependencies are weaker than superclasses:", prettyInline 0 cls]
+      , hang 2 $ vsep ["should have a functional dependency stricter than", prettyInline 0 fundep]
+      ]
+    OverlappingInstances a b -> sep
+      [ hang 2 $ vsep ["Overlapping instances:", prettyInline 0 a]
+      , hang 2 $ vsep ["conflicts with", prettyInline 0 b]
+      ]
+    CoverageConditionUnsatisfied inst cls fundep ->
+      hang 2 $ sep ["Coverage condition of" <+> prettyInline 0 fundep <+> "on" <+> prettyInline 0 cls' <+> "is unsatisfied:", prettyInline 0 inst]
+     where
+      cls' = cls & fundeps .~ [] & superclasses .~ []
+    ConsistencyConditionUnsatisfied a b cls fundep -> sep
+      [ hang 2 $ vsep ["Consistency condition of" <+> prettyInline 0 fundep <+> "on" <+> prettyInline 0 cls' <+> "is unsatisfied:", prettyInline 0 a]
+      , hang 2 $ vsep ["conflicts with", prettyInline 0 b]
+      ]
+     where
+      cls' = cls & fundeps .~ [] & superclasses .~ []
+    NoMatchingInstances ps p ->
+      group $ "No matching instances for" <+> prettyInline 0 p <++ ps
+    InstanceResolutionExhausted p ->
+      group $ "Instance resolution exhausted for" <+> prettyInline 0 p
+    CannotResolveAmbiguity a ps ->
+      group $ "Cannot resolve ambiguity for _" <> prettyInline 0 a <++ ps
+    UselessPattern p ->
+      hang 2 $ sep ["Useless pattern:", (unAnnotate . hsep) p]
+    NonExhaustivePattern ps ->
+      hang 2 $ sep $ "Non exhaustive pattern:" : punctuate " |" (map (unAnnotate . hsep) ps)
 
-instance Show UnifyFailReason where
-  show = \case
-    Mismatch -> ""
-    OccursCheckFailed -> ": occurs check failed"
-    SignatureTooGeneral -> ": signature too general"
+instance Pretty UnifyFailReason where
+  pretty = \case
+    Mismatch -> mempty
+    OccursCheckFailed -> "Occurs check failed"
+    SignatureTooGeneral -> "Signature too general"

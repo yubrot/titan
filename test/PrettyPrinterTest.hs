@@ -6,9 +6,10 @@ module PrettyPrinterTest
 import Test.Hspec
 import Titan
 import Titan.Prelude
+import TestHelper
 
-test :: forall a. Pretty a => a -> Text
-test = pretty
+test :: forall a. PrettyCode a => a -> Text
+test = renderCode
 
 spec :: Spec
 spec = describe "Titan.PrettyPrinter" $ do

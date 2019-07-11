@@ -1,255 +1,273 @@
 module Titan.PrettyPrinter
-  ( Pretty(..)
-  , PrettyFundeps(..)
-  , PrettyContext(..)
-  , PrettyField(..)
-  , PrettyQuantification(..)
+  ( PrettyCode(..)
+  , PrettySuffix(..)
+  , PrettyPrefix(..)
   ) where
 
-import qualified Data.Text as Text
+import Data.Text.Prettyprint.Doc hiding (parens, brackets, braces, angles)
 import Titan.Prelude
 import Titan.TT
 
-class Pretty a where
-  {-# MINIMAL pprintsPrec | pprint #-}
-  pprintsPrec :: Int -> a -> ShowS
-  pprintsPrec _ x s = pprint x ++ s
+class PrettyCode a where
+  {-# MINIMAL prettyBlock | prettyInline #-}
+  prettyBlock :: Int -> a -> Doc ann
+  prettyBlock = prettyInline
+  prettyInline :: Int -> a -> Doc ann
+  prettyInline prec = group . prettyBlock prec
 
-  pprint :: a -> String
-  pprint x = pprints x ""
+infixl 3 <++
 
-  pretty :: a -> Text
-  pretty = Text.pack . pprint
+class PrettySuffix a where
+  (<++) :: Doc ann -> a -> Doc ann
 
-pprints :: Pretty a => a -> ShowS
-pprints = pprintsPrec 0
+infixr 4 ++>
 
-instance Pretty (Id a) where
-  pprint id = Text.unpack (id^.name)
+class PrettyPrefix a where
+  (++>) :: a -> Doc ann -> Doc ann
 
-instance Pretty Kind where
-  pprintsPrec prec = \case
-    KVar s -> raw "_" . pprintsPrec prec s
-    KType -> raw "*"
-    KConstraint -> raw "?"
-    KRow k -> raw "# " . pprintsPrec 10 k
-    KFun a b -> paren (0 < prec) (pprintsPrec 1 a . raw " -> " . pprintsPrec 0 b)
+instance PrettySuffix a => PrettySuffix (Maybe a) where
+  d <++ ma = maybe d (d <++) ma
 
-instance Pretty Label where
-  pprintsPrec _ = \case
-    LName n -> raw (Text.unpack n)
-    LIndex i -> raw (show i)
+instance PrettyPrefix a => PrettyPrefix (Maybe a) where
+  ma ++> d = maybe d (++> d) ma
 
-instance Pretty Type where
-  pprintsPrec prec = \case
-    TVar s _ _ -> raw "_" . pprintsPrec prec s
-    TCon s -> pprintsPrec prec s
-    a :--> b -> paren (0 < prec) (pprintsPrec 1 a . raw " -> " . pprintsPrec 0 b)
-    TRecord TEmptyRow -> raw "{}"
-    TupleCreate (x:xs) -> raw "(" . cat ", " 0 x 0 xs . raw ")"
-    TRecord (TRowExtend l a b) -> raw "{ " . prettyRow l a b . raw " }"
-    TRecord s -> raw "{ " . pprintsPrec 0 s . raw " }"
-    TRowExtend l a b -> raw "<" . prettyRow l a b . raw ">"
-    TApp a b -> paren (9 < prec) (pprintsPrec 9 a . raw " " . pprintsPrec 10 b)
-    TGen s -> pprintsPrec prec s
+instance PrettyCode (Id a) where
+  prettyBlock _ id = pretty (id^.name)
+
+instance PrettyCode Kind where
+  prettyBlock prec = \case
+    KVar s -> "_" <> prettyInline prec s
+    KType -> "*"
+    KConstraint -> "?"
+    KRow k -> parensIf (9 < prec) $ "#" <+> prettyInline 10 k
+    KFun a b -> parensIf (0 < prec) $ prettyBlock 1 a <+> "->" <++> prettyBlock 0 b
+
+instance PrettyCode Label where
+  prettyBlock _ = \case
+    LName n -> pretty n
+    LIndex i -> pretty i
+
+instance PrettyCode Type where
+  prettyBlock prec = \case
+    TVar s _ _ -> "_" <> prettyInline prec s
+    TCon s -> prettyBlock prec s
+    a :--> b -> parensIf (0 < prec) $ prettyBlock 1 a <+> "->" <++> prettyBlock 0 b
+    TRecord TEmptyRow -> "{}"
+    TupleCreate xs -> parens $ punctuate "," $ map (prettyBlock 0) xs
+    TRecord (TRowExtend l a b) -> braces $ punctuateRow l a b
+    TRecord s -> braces [prettyBlock 0 s]
+    TRowExtend l a b -> angles $ punctuateRow l a b
+    TApp a b -> parensIf (9 < prec) $ prettyInline 9 a <+> prettyInline 10 b
+    TGen s -> prettyBlock prec s
    where
-    prettyRow l a b = pprints l . raw " : " . pprintsPrec 0 a . case b of
-      TEmptyRow -> id
-      TRowExtend l b c -> raw ", " . prettyRow l b c
-      b -> raw " | " . pprintsPrec 0 b
+    punctuateRow l a b =
+      let l' = prettyInline 0 l <+> ":" <+> prettyBlock 0 a in
+      case b of
+        TEmptyRow -> [l']
+        TRowExtend l b c -> (l' <> ",") : punctuateRow l b c
+        b -> [l' <> " |", prettyBlock 0 b]
 
-instance Pretty TypeCon where
-  pprintsPrec prec = \case
-    TypeConData s -> pprintsPrec prec s
-    TypeConArrow -> raw "(->)"
-    TypeConRecord -> raw "{_}"
-    TypeConEmptyRow -> raw "<>"
-    TypeConRowExtend l -> raw "<+" . pprints l . raw ">"
+instance PrettyCode TypeCon where
+  prettyBlock prec = \case
+    TypeConData s -> prettyBlock prec s
+    TypeConArrow -> "(->)"
+    TypeConRecord -> "{_}"
+    TypeConEmptyRow -> "<>"
+    TypeConRowExtend l -> "<+" <> prettyInline 0 l <> ">"
 
-instance Pretty Parameter where
-  pprintsPrec prec parameter = case parameter^.kind of
-    Typed _ k -> paren (9 < prec) $ pprints (parameter^.ident) . raw " : " . pprints k
-    _ -> pprints (parameter^.ident)
+instance PrettyCode Parameter where
+  prettyBlock prec parameter = case parameter^.kind of
+    Typed _ k ->
+      parensIf (9 < prec) $ nest 2 $
+        prettyInline 0 (parameter^.ident) <++> ":" <+> align (prettyInline 0 k)
+    _ ->
+      prettyInline 0 (parameter^.ident)
 
-instance Pretty (Fundep a) where
-  pprintsPrec _ (as :~> bs) = p as . raw " ~> " . p bs
+instance PrettyCode (Fundep a) where
+  prettyBlock _ (as :~> bs) = p as <+> "~>" <+> p bs
    where
-    p [] = id
-    p (x:xs) = cat " " 0 x 0 xs
+    p = hsep . map (prettyInline 0)
 
-newtype PrettyFundeps a = PrettyFundeps [Fundep a]
+instance PrettySuffix [Fundep a] where
+  d <++ [] = d
+  d <++ fds = group $ d <++> "|" <+> (align . sep . punctuate "," . map (prettyInline 0)) fds
 
-instance Pretty (PrettyFundeps a) where
-  pprintsPrec _ (PrettyFundeps fundeps) = case fundeps of
-    [] -> id
-    d:ds -> raw " | " . cat ", " 0 d 0 ds
+instance PrettyCode Constraint where
+  prettyBlock prec = \case
+    CClass s [] -> prettyInline 9 s
+    CClass s ts -> parensIf (9 < prec) $ hsep $ prettyInline 9 s : map (prettyInline 10) ts
 
-instance Pretty Constraint where
-  pprintsPrec prec = \case
-    CClass s ts -> paren (9 < prec) (cat " " 0 s 10 ts)
+instance PrettyPrefix [Parameter] where
+  ps ++> d = group $ brackets (map (prettyInline 10) ps) <++> d
 
-instance Pretty Scheme where
-  pprintsPrec _ scheme =
-    (pprints . PrettyQuantification) (scheme^.quantification) .
-    pprints (scheme^.body) .
-    (pprints . PrettyContext) (scheme^.context)
+instance PrettySuffix [Constraint] where
+  d <++ [] = d
+  d <++ [c] = d <++> "where" <+> prettyInline 0 c
+  d <++ cs = d <++> "where" <+> (parens . punctuate "," . map (prettyInline 0)) cs
 
-newtype PrettyQuantification = PrettyQuantification (Typing [Parameter])
+instance PrettyCode Scheme where
+  prettyBlock _ scheme =
+    scheme^?quantification.typed ++> prettyInline 0 (scheme^.body) <++ scheme^.context
 
-instance Pretty PrettyQuantification where
-  pprintsPrec _ = \case
-    PrettyQuantification (Typed _ []) -> raw "[] "
-    PrettyQuantification (Typed _ (p:ps)) -> raw "[" . cat " " 10 p 10 ps . raw "] "
-    _ -> id
+instance PrettySuffix Scheme where
+  d <++ s = d <++> ":" <+> align (prettyInline 0 s)
 
-newtype PrettyContext = PrettyContext [Constraint]
+instance PrettyCode Literal where
+  prettyBlock _ = \case
+    LInteger i -> pretty i
+    LChar c -> viaShow c
+    LFloat d -> pretty d
+    LString s -> viaShow s
 
-instance Pretty PrettyContext where
-  pprintsPrec _ (PrettyContext cs) = case cs of
-    [] -> id
-    [c] -> raw " where " . pprints c
-    c:cs -> raw " where (" . cat ", " 0 c 0 cs . raw ")"
+instance PrettyCode Pattern where
+  prettyBlock prec = \case
+    PVar d p -> prettyInline prec d <> maybe mempty (\p -> "@" <> prettyBlock 10 p) p
+    PWildcard -> "_"
+    PDecon s [] -> prettyInline 9 s
+    PDecon s ts -> parensIf (9 < prec) $ hsep $ prettyInline 9 s : map (prettyInline 10) ts
+    PLit l -> prettyBlock prec l
 
-instance Pretty Literal where
-  pprint = \case
-    LInteger i -> show i
-    LChar c -> show c
-    LFloat d -> show d
-    LString s -> show s
+instance PrettyCode PatternDef where
+  prettyBlock prec def = prettyBlock prec (def^.ident)
 
-instance Pretty Pattern where
-  pprintsPrec prec = \case
-    PVar d p -> pprintsPrec prec d . maybe id (\p -> raw "@" . pprintsPrec 10 p) p
-    PWildcard -> raw "_"
-    PDecon s [] -> pprintsPrec prec s
-    PDecon s ts -> paren (9 < prec) (cat " " 9 s 10 ts)
-    PLit l -> pprintsPrec prec l
+instance PrettyCode Expr where
+  prettyBlock prec = \case
+    EVar s -> prettyBlock prec s
+    ECon s -> prettyBlock prec s
+    ERecordSelect l a -> prettyBlock 10 a <> "." <> prettyInline 0 l
+    TupleCreate xs -> parens $ punctuate "," $ map (prettyBlock 0) xs
+    RecordCreate fs -> braces $ punctuate "," $ map (prettyBlock 0) fs
+    RecordUpdate fs@(_:_) r -> "%" <> braces (punctuate "," $ map (prettyBlock 0) fs) <+> prettyInline 10 r
+    EApp a b -> parensIf (9 < prec) $ prettyInline 9 a <+> prettyInline 10 b
+    ELit l -> prettyBlock prec l
+    ELet bs e -> parensIf (1 < prec) $ align $
+      nest 4 ("let" <+> vsep (punctuate "," $ map (prettyInline 0) $ toList bs)) <++>
+      "in" <++>
+      prettyBlock (if 1 < prec then 0 else prec) e
+    ELam (a :| as) -> parensIf (0 < prec) $ align $ case as of
+      [] ->
+        "fun" <+> prettyBlock 1 a
+      as ->
+        "fun" <++>
+        nest 2 (flatAlt "| " mempty <> prettyInline 1 a) <++>
+        vsep (map (\a -> nest 2 ("| " <> prettyInline 1 a)) as)
 
-instance Pretty PatternDef where
-  pprintsPrec prec def = pprintsPrec prec (def^.ident)
+instance PrettySuffix Expr where
+  d <++ e = d <++> "=" <+> align (prettyBlock 0 e)
 
-instance Pretty Expr where
-  pprintsPrec prec = \case
-    EVar s -> pprintsPrec prec s
-    ECon s -> pprintsPrec prec s
-    ERecordSelect l a -> pprintsPrec 10 a . raw "." . pprints l
-    TupleCreate (x:xs) -> raw "(" . cat ", " 0 x 0 xs . raw ")"
-    RecordCreate (f:fs) -> raw "{ " . cat ", " 0 (PrettyField f) 0 (map PrettyField fs) . raw " }"
-    RecordUpdate (f:fs) r -> raw "%{ " . cat ", " 0 (PrettyField f) 0 (map PrettyField fs) . raw " } " . pprintsPrec 10 r
-    EApp a b -> paren (9 < prec) (pprintsPrec 9 a . raw " " . pprintsPrec 10 b)
-    ELit l -> pprintsPrec prec l
-    ELet (bind :| binds) e -> paren (1 < prec) $
-      raw "let " .
-      cat ", " 0 bind 0 binds .
-      raw " in " .
-      pprintsPrec (if 1 < prec then 0 else prec) e
-    ELam (alt :| alts) -> paren (0 < prec) $
-      raw "fun " .
-      cat " | " 1 alt 1 alts
+instance PrettyCode (Label, Expr) where
+  prettyBlock _ (l, a) = prettyInline 0 l <+> "=" <+> prettyBlock 0 a
 
-newtype PrettyField = PrettyField (Label, Expr)
+instance PrettyCode LocalDef where
+  prettyBlock _ def = nest 2 $
+    prettyInline 0 (def^.ident) <++ def^?scheme.typed <++ def^.body
 
-instance Pretty PrettyField where
-  pprintsPrec _ (PrettyField (l, a)) = pprints l . raw " = " . pprintsPrec 0 a
+instance PrettyCode Alt where
+  prettyBlock prec (ps :-> body) = nest 2 $
+    hsep (map (prettyInline 10) (toList ps)) <+> "->" <++>
+    prettyBlock prec body
 
-instance Pretty LocalDef where
-  pprintsPrec _ def =
-    pprints (def^.ident) .
-    maybe id (\s -> raw " : " . pprints s) (def^?scheme.typed) .
-    maybe id (\e -> raw " = " . pprints e) (def^.body)
+instance PrettyCode Value where
+  prettyBlock prec = \case
+    VVar id -> prettyBlock prec id
+    VDef id -> prettyBlock prec id
+    VLocalDef id -> prettyBlock prec id
+    VClassMethod id -> prettyBlock prec id
+    VPatternDef id -> prettyBlock prec id
 
-instance Pretty Alt where
-  pprintsPrec prec ((p :| ps) :-> body) =
-    cat " " 10 p 10 ps . raw " -> " . pprintsPrec prec body
+instance PrettyCode ValueCon where
+  prettyBlock prec = \case
+    ValueConData s -> prettyBlock prec s
+    ValueConEmptyRecord -> "{}"
+    ValueConRecordSelect l -> "{." <> prettyInline 0 l <> "}"
+    ValueConRecordRestrict l -> "{-" <> prettyInline 0 l <> "}"
+    ValueConRecordExtend l -> "{+" <> prettyInline 0 l <> "}"
+    ValueConRecordUpdate l -> "{%" <> prettyInline 0 l <> "}"
 
-instance Pretty Value where
-  pprintsPrec _ = \case
-    VVar id -> pprints id
-    VDef id -> pprints id
-    VLocalDef id -> pprints id
-    VClassMethod id -> pprints id
-    VPatternDef id -> pprints id
+instance PrettyCode Def where
+  prettyBlock _ def = nest 2 $
+    "val" <+> prettyInline 0 (def^.ident) <++ def^?scheme.typed <++ def^.body
 
-instance Pretty ValueCon where
-  pprintsPrec _ = \case
-    ValueConData s -> pprintsPrec 0 s
-    ValueConEmptyRecord -> raw "{}"
-    ValueConRecordSelect l -> raw "{." . pprints l . raw "}"
-    ValueConRecordRestrict l -> raw "{-" . pprints l . raw "}"
-    ValueConRecordExtend l -> raw "{+" . pprints l . raw "}"
-    ValueConRecordUpdate l -> raw "{%" . pprints l . raw "}"
+instance PrettyCode DataTypeCon where
+  prettyBlock _ con = nest 4 $
+    "data" <+> sep (prettyInline 9 (con^.ident) : map (prettyInline 10) (con^.parameters))
 
-instance Pretty Def where
-  pprintsPrec _ def =
-    raw "val " .
-    pprints (def^.ident) .
-    maybe id (\s -> raw " : " . pprints s) (def^?scheme.typed) .
-    maybe id (\e -> raw " = " . pprints e) (def^.body)
+instance PrettyCode DataValueCon where
+  prettyBlock _ con = nest 4 $
+    "con" <+> sep (prettyInline 9 (con^.ident) : map (prettyInline 10) (con^.fields))
 
-instance Pretty DataTypeCon where
-  pprintsPrec _ con =
-    raw "data " . cat " " 0 (con^.ident) 10 (con^.parameters)
+instance PrettyCode ClassCon where
+  prettyBlock _ cls = nest 4 $
+    "class" <+> sep (prettyInline 9 (cls^.ident) : map (prettyInline 10) (cls^.parameters)) <++
+    cls^.fundeps <++
+    cls^.superclasses
 
-instance Pretty DataValueCon where
-  pprintsPrec _ con =
-    raw "con " . cat " " 0 (con^.ident) 10 (con^.fields)
+instance PrettyCode ClassMethod where
+  prettyBlock _ method = nest 2 $
+    "val" <+> prettyInline 0 (method^.ident) <++ method^.scheme <++ method^.defaultBody
 
-instance Pretty ClassCon where
-  pprintsPrec _ cls =
-    raw "class " . cat " " 0 (cls^.ident) 10 (cls^.parameters) .
-    (pprints . PrettyFundeps) (cls^.fundeps) .
-    (pprints . PrettyContext) (cls^.superclasses)
+instance PrettyCode Instance where
+  prettyBlock _ inst = nest 4 $
+    "instance" <+> (
+      inst^?quantification.typed ++>
+      sep (prettyInline 9 (inst^.cls) : map (prettyInline 10) (inst^.arguments)) <++
+      inst^.context
+    )
 
-instance Pretty ClassMethod where
-  pprintsPrec _ method =
-    raw "val " .
-    pprints (method^.ident) .
-    (\s -> raw " : " . pprints s) (method^.scheme) .
-    maybe id (\e -> raw " = " . pprints e) (method^.defaultBody)
+instance PrettyCode Default where
+  prettyBlock _ d =
+    "default" `withItems` map (prettyInline 10) (d^.candidates)
 
-instance Pretty Instance where
-  pprintsPrec _ inst =
-    raw "instance " .
-    (pprints . PrettyQuantification) (inst^.quantification) .
-    cat " " 0 (inst^.cls) 10 (inst^.arguments) .
-    (pprints . PrettyContext) (inst^.context)
+instance PrettyCode DumpType where
+  prettyBlock _ = \case
+    DumpEverything -> mempty
+    DumpTypeSignature -> "(type)"
+    DumpKindSignature -> "(kind)"
 
-instance Pretty Default where
-  pprintsPrec _ d =
-    raw "default" .
-    items (d^.candidates)
+instance PrettyCode Decl where
+  prettyBlock prec = \case
+    DDef d -> prettyBlock prec d
+    DData c cs -> prettyInline prec c `withItems` map (prettyBlock 0) cs
+    DClass c vs -> prettyInline prec c `withItems` map (prettyBlock 0) vs
+    DInstance c -> prettyInline prec c
+    DDefault d -> prettyBlock prec d
+    DDump dt d -> "dump" <> prettyInline 0 dt <+> prettyBlock prec d
 
-instance Pretty DumpType where
-  pprintsPrec _ = \case
-    DumpEverything -> id
-    DumpTypeSignature -> raw "(type)"
-    DumpKindSignature -> raw "(kind)"
+instance PrettyCode Program where
+  prettyBlock _ program = vsep $ map (prettyBlock 0) (program^.decls)
 
-instance Pretty Decl where
-  pprintsPrec _ = \case
-    DDef d -> pprints d
-    DData c cs -> pprints c . items cs
-    DClass c vs -> pprints c . items vs
-    DInstance c -> pprints c
-    DDefault d -> pprints d
-    DDump dt d -> raw "dump" . pprints dt . raw " " . pprints d
+vblock :: Doc ann -> Doc ann -> [Doc ann] -> Doc ann
+vblock head tail body = nest 2 (head <> line <> vsep body) <> line <> tail
 
-instance Pretty Program where
-  pprintsPrec _ program = case program^.decls of
-    [] -> raw ""
-    decl:decls -> cat " " 0 decl 0 decls
+vblock' :: Doc ann -> Doc ann -> [Doc ann] -> Doc ann
+vblock' head tail body = nest 2 (head <> line' <> vsep body) <> line' <> tail
 
-cat :: (Pretty a, Pretty b) => String -> Int -> a -> Int -> [b] -> ShowS
-cat sep precx x precxs xs =
-  foldr1 (\a b -> a . raw sep . b) (pprintsPrec precx x : map (pprintsPrec precxs) xs)
+block :: Doc ann -> Doc ann -> [Doc ann] -> Doc ann
+block head tail body = group $ vblock head tail body
 
-raw :: String -> ShowS
-raw = showString
+block' :: Doc ann -> Doc ann -> [Doc ann] -> Doc ann
+block' head tail body = group $ vblock' head tail body
 
-paren :: Bool -> ShowS -> ShowS
-paren = showParen
+withItems :: Doc ann -> [Doc ann] -> Doc ann
+withItems d [] = d
+withItems d ds = d <+> vblock "{" "}" ds
 
-items :: Pretty a => [a] -> ShowS
-items = \case
-  [] -> id
-  item:items -> raw " { " . cat " " 0 item 0 items . raw " }"
+parens :: [Doc ann] -> Doc ann
+parens = block' "(" ")"
+
+brackets :: [Doc ann] -> Doc ann
+brackets = block' "[" "]"
+
+braces :: [Doc ann] -> Doc ann
+braces = block "{" "}"
+
+angles :: [Doc ann] -> Doc ann
+angles = block' "<" ">"
+
+infixr 5 <++>
+(<++>) :: Doc ann -> Doc ann -> Doc ann
+l <++> r = l <> line <> r
+
+parensIf :: Bool -> Doc ann -> Doc ann
+parensIf True d = parens [d]
+parensIf False d = d

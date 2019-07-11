@@ -6,7 +6,8 @@ Titan is an experimental type checker implementation written in Haskell.
 
 This implementation is based on the implementation of [Typing Haskell in Haskell](https://web.cecs.pdx.edu/~mpj/thih/) type checker. I'm going to implement some additional features like:
 
-* [x] Parsers and (poor) pretty-printers
+* [x] Parsers
+* [x] Pretty-printers
 * [x] Implicit universal quantification
 * [x] Kind inference
 * [x] Explicit kind signatures and scoped type variables

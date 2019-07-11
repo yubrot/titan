@@ -5,12 +5,13 @@ module TypeInferenceTest
 import Test.Hspec
 import Titan
 import Titan.Prelude
+import TestHelper
 
 test :: Text -> Either Error Text
-test code = fmap (pretty . program) (parse "test" code >>= bind emptyGlobal >>= resolve >>= ki >>= ti)
+test code = fmap (renderCode . program) (parse "test" code >>= bind emptyGlobal >>= resolve >>= ki >>= ti)
 
 (==>) :: HasCallStack => Text -> Text -> Expectation
-code ==> result = forM_ [code, result] $ \code -> test code `shouldBe` Right result
+code ==> result = forM_ [code, result] $ \code -> test code `shouldBeRight` result
 
 (==>!) :: HasCallStack => Text -> (Error -> Bool) -> Expectation
 code ==>! f = test code `shouldSatisfy` \case Left e -> f e; _ -> False
@@ -117,9 +118,9 @@ spec = describe "Titan.TypeInference" $ do
     "val f = fun 'a' -> 'b' | x -> x data Char"
       ==> "val f : [] Char -> Char = fun 'a' -> 'b' | x -> x data Char"
     "val f = fun 'a' -> 'b' | 'a' -> 'd' data Char"
-      ==>! \case UselessPattern "'a'" -> True; _ -> False
+      ==>! \case UselessPattern [show -> "'a'"] -> True; _ -> False
     "val f = fun 'a' -> 'b' data Char"
-      ==>! \case NonExhaustivePattern ["_"] -> True; _ -> False
+      ==>! \case NonExhaustivePattern [[show -> "_"]] -> True; _ -> False
     "val f = fun 'a' y -> y | x y -> x data Char"
       ==> "val f : [] Char -> Char -> Char = fun 'a' y -> y | x y -> x data Char"
     "val f = fun 'a' -> 'b' | \"a\" -> 'b' data Char data List a"
@@ -131,7 +132,7 @@ spec = describe "Titan.TypeInference" $ do
     "val f = fun A -> A data T { con A }"
       ==> "val f : [] T -> T = fun A -> A data T { con A }"
     "val f = fun A -> A data T a { con A con B con C a }"
-      ==>! \case NonExhaustivePattern ["B", "(C _)"] -> True; _ -> False
+      ==>! \case NonExhaustivePattern [[show -> "B"], [show -> "(C _)"]] -> True; _ -> False
     "val f = fun (A a) -> A data T { con A }"
       ==>! \case CannotUnifyType _ _ _ -> True; _ -> False
     "val f = fun A -> A data T { con A T }"
@@ -301,7 +302,7 @@ spec = describe "Titan.TypeInference" $ do
     "data A data B class F a b | a ~> b instance F A B"
       ==> "data A data B class F (a : *) (b : *) | a ~> b instance [] F A B"
     "data A data B class F a b | a ~> b instance F a b"
-      ==>! \case CoverageConditionUnsatisfied _ _ -> True; _ -> False
+      ==>! \case CoverageConditionUnsatisfied _ _ _ -> True; _ -> False
     "data T a class F a b | a ~> b instance F (T a) a"
       ==> "data T (a : *) class F (a : *) (b : *) | a ~> b instance [(a : *)] F (T a) a"
     "data T a class F a b | a ~> b instance F a (T a)"
@@ -309,23 +310,23 @@ spec = describe "Titan.TypeInference" $ do
     "data A class F a b | a ~> b instance F a A"
       ==> "data A class F (a : *) (b : *) | a ~> b instance [(a : *)] F a A"
     "data A class F a b | a ~> b instance F A a"
-      ==>! \case CoverageConditionUnsatisfied _ _ -> True; _ -> False
+      ==>! \case CoverageConditionUnsatisfied _ _ _ -> True; _ -> False
     "data T a class F a b | a ~> b instance F (T x) y where F x y"
       ==> "data T (a : *) class F (a : *) (b : *) | a ~> b instance [(x : *) (y : *)] F (T x) y where F x y"
     "class F a b | a ~> b instance F x y where F x x"
-      ==>! \case CoverageConditionUnsatisfied _ _ -> True; _ -> False
+      ==>! \case CoverageConditionUnsatisfied _ _ _ -> True; _ -> False
     "data A data B class F a b | a ~> b instance F A A instance F B A"
       ==> "data A data B class F (a : *) (b : *) | a ~> b instance [] F A A instance [] F B A"
     "data A data B class F a b | a ~> b instance F A A instance F A B"
-      ==>! \case ConsistencyConditionUnsatisfied _ _ _ -> True; _ -> False
+      ==>! \case ConsistencyConditionUnsatisfied _ _ _ _ -> True; _ -> False
     "data A data B data T a b class F a b c | a ~> b instance F (T a b) a A instance F (T a b) a B"
       ==> "data A data B data T (a : *) (b : *) class F (a : *) (b : *) (c : *) | a ~> b instance [(a : *) (b : *)] F (T a b) a A instance [(a : *) (b : *)] F (T a b) a B"
     "data A data B data T a b class F a b c | a ~> b instance F (T a b) a A instance F (T a b) b B"
-      ==>! \case ConsistencyConditionUnsatisfied _ _ _ -> True; _ -> False
+      ==>! \case ConsistencyConditionUnsatisfied _ _ _ _ -> True; _ -> False
     "data Float data Int class Add a b c | a b ~> c instance Add Float Float Float instance Add Float Int Float instance Add Int Float Float instance Add Int Int Int"
       ==> "data Float data Int class Add (a : *) (b : *) (c : *) | a b ~> c instance [] Add Float Float Float instance [] Add Float Int Float instance [] Add Int Float Float instance [] Add Int Int Int"
     "data Float data Int class Add a b c | a b ~> c instance Add Float Float Float instance Add Float Int Float instance Add Int Float Float instance Add Int Int Int instance Add Int Int Float"
-      ==>! \case ConsistencyConditionUnsatisfied _ _ _ -> True; _ -> False
+      ==>! \case ConsistencyConditionUnsatisfied _ _ _ _ -> True; _ -> False
   it "improving inferred types with functional dependencies" $ do
     "val g = f A data A { con A } data B class F x y { val f : x -> y } instance F A B"
       ==> "val g : [(a : *)] a where F A a = f A data A { con A } data B class F (x : *) (y : *) { val f : [] x -> y } instance [] F A B"

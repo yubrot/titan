@@ -10,6 +10,7 @@ import qualified ResolverTest
 import qualified KindInferenceTest
 import qualified TypeInferenceTest
 import qualified PatternCheckerTest
+import TestHelper
 
 main :: IO ()
 main = hspec $ do
@@ -29,12 +30,13 @@ testStd :: Global -> [(FilePath, Text)] -> Spec
 testStd _ [] = return ()
 testStd global ((path, code):rest) = do
   let parse' = parse @Program path
+      parsed = fromRight (Program []) . parse'
       bind' = bind global
       test f code = (parse' >=> bind' >=> f) code `shouldSatisfy` isRight
 
   describe path $ do
     it "parse" $ parse' code `shouldSatisfy` isRight
-    it "pprint" $ (parse' code >>= parse' . pretty) `shouldBe` parse' code
+    it "pprint" $ (parse' $ renderCode $ parsed code) `shouldBeRight` parsed code
     it "bind" $ test pure code
     it "resolve" $ test resolve code
     it "ki" $ test (resolve >=> ki) code

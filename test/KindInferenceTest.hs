@@ -5,12 +5,13 @@ module KindInferenceTest
 import Test.Hspec
 import Titan
 import Titan.Prelude
+import TestHelper
 
 test :: Text -> Either Error Text
-test code = fmap (pretty . program) (parse "test" code >>= bind emptyGlobal >>= resolve >>= ki)
+test code = fmap (renderCode . program) (parse "test" code >>= bind emptyGlobal >>= resolve >>= ki)
 
 (==>) :: HasCallStack => Text -> Text -> Expectation
-code ==> result = forM_ [code, result] $ \code -> test code `shouldBe` Right result
+code ==> result = forM_ [code, result] $ \code -> test code `shouldBeRight` result
 
 (==>!) :: HasCallStack => Text -> (Error -> Bool) -> Expectation
 code ==>! f = test code `shouldSatisfy` \case Left e -> f e; _ -> False
@@ -160,6 +161,6 @@ spec = describe "Titan.KindInference" $ do
     "data T a default { T }"
       ==> "data T (a : *) default { T }"
     "data S a data T default { (S T) }"
-      ==> "data S (a : *) data T default { S T }"
+      ==> "data S (a : *) data T default { (S T) }"
     "data S a data T default { (S T T) }"
       ==>! \case CannotUnifyKind _ _ Mismatch -> True; _ -> False

@@ -4,6 +4,7 @@ module Titan.PatternChecker
   , check
   , uselessCheck
   , exhaustivenessCheck
+  , Pretty(..)
   , Pat(..)
   , Tag(..)
   , Literal(..)
@@ -15,7 +16,7 @@ module Titan.PatternChecker
 
 import qualified Data.List as List
 import qualified Data.Set as Set
-import qualified Data.Text as Text
+import Data.Text.Prettyprint.Doc
 import Titan.Prelude
 import Titan.TT (Name, Arity, Literal(..))
 
@@ -53,12 +54,12 @@ data Pat
   = Constructor Tag [Pat]
   | Or Pat Pat
   | Wildcard
-  deriving (Eq, Ord, Typeable)
+  deriving (Eq, Ord, Show, Typeable)
 
 data Tag
   = TagLit Literal
   | TagClosed (Name, Arity) [(Name, Arity)]
-  deriving (Eq, Ord, Typeable)
+  deriving (Eq, Ord, Show, Typeable)
 
 tagArity :: Tag -> Arity
 tagArity = \case
@@ -113,24 +114,21 @@ mat \. j  = map (\row -> take j row ++ drop (j+1) row) mat
 (//.) :: Matrix -> Int -> Matrix
 mat //. j = map (\row -> [row !! j]) mat
 
-instance Show Pat where
-  show = \case
-    Constructor tag [] -> show tag
-    Constructor tag ps -> "(" ++ show tag ++ " " ++ show ps ++ ")"
-    Or p1 p2 -> "(" ++ show p1 ++ " | " ++ show p2 ++ ")"
+instance Pretty Pat where
+  pretty = \case
+    Constructor tag [] -> pretty tag
+    Constructor tag ps -> parens (hsep (pretty tag : map pretty ps))
+    Or p1 p2 -> parens (pretty p1 <+> "|" <+> pretty p2)
     Wildcard -> "_"
-  showList = \case
-    [] -> id
-    ps -> (foldr1 (\a b -> a ++ " " ++ b) (map show ps) ++)
 
-instance Show Tag where
-  show = \case
+instance Pretty Tag where
+  pretty = \case
     TagLit l -> case l of
-      LInteger i -> show i
-      LChar c -> show c
-      LFloat d -> show d
-      LString s -> show s
-    TagClosed (name, _) _ -> Text.unpack name
+      LInteger i -> pretty i
+      LChar c -> viaShow c
+      LFloat d -> pretty d
+      LString s -> viaShow s
+    TagClosed (name, _) _ -> pretty name
 
 class Incompatible a where
   (##) :: a -> a -> Bool

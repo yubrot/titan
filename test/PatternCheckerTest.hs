@@ -2,6 +2,7 @@ module PatternCheckerTest
   ( spec
   ) where
 
+import Data.Text.Prettyprint.Doc
 import Test.Hspec
 import Titan.PatternChecker
 import Titan.Prelude
@@ -35,23 +36,22 @@ integerP n = Constructor (TagLit (LInteger n)) []
 
 spec :: Spec
 spec = describe "Titan.PatternChecker" $ do
-  it "show" $ do
-    show Wildcard
+  it "pretty" $ do
+    let p = show . pretty
+    p Wildcard
       `shouldBe` "_"
-    show nothingP
+    p nothingP
       `shouldBe` "Nothing"
-    show (justP Wildcard)
+    p (justP Wildcard)
       `shouldBe` "(Just _)"
-    show (justP (justP Wildcard))
+    p (justP (justP Wildcard))
       `shouldBe` "(Just (Just _))"
-    show (integerP 5)
+    p (integerP 5)
       `shouldBe` "5"
-    show (Or (integerP 5) (integerP 6))
+    p (Or (integerP 5) (integerP 6))
       `shouldBe` "(5 | 6)"
-    show (cP nothingP Wildcard)
+    p (cP nothingP Wildcard)
       `shouldBe` "(C Nothing _)"
-    show [Wildcard, Wildcard, Wildcard]
-      `shouldBe` "_ _ _"
   it "exhaustiveness" $ do
     [[Wildcard]]
       ==> Complete

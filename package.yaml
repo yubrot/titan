@@ -56,6 +56,7 @@ dependencies:
 - lens
 - mtl
 - text
+- prettyprinter
 
 library:
   source-dirs: src
@@ -77,6 +78,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - titan
+    - terminal-size
 
 tests:
   titan-test:

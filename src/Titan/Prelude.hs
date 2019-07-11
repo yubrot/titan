@@ -26,14 +26,14 @@ module Titan.Prelude
 
 import Prelude
 import Control.Applicative
-import Control.Arrow hiding (app)
+import Control.Arrow (first, second, (&&&), (***))
 import Control.Lens hiding (Level)
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.Writer hiding (Alt)
 import Control.Monad.State
-import Data.Data hiding (DataType, typeOf)
+import Data.Data (Data, Typeable)
 import Data.Either
 import Data.Foldable
 import Data.Function
