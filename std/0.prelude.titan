@@ -45,21 +45,13 @@ data Ordering {
 
 data Char
 
-data Unit {
-  con Unit
-}
+val fst : (a, b) -> a = fun t -> t.0
 
-data Pair a b {
-  con Pair a b
-}
+val snd : (a, b) -> b = fun t -> t.1
 
-val fst : Pair a b -> a = fun (Pair x _) -> x
+val curry : ((a, b) -> c) -> a -> b -> c = fun f x y -> f (x, y)
 
-val snd : Pair a b -> b = fun (Pair _ y) -> y
-
-val curry : (Pair a b -> c) -> a -> b -> c = fun f x y -> f (Pair x y)
-
-val uncurry : (a -> b -> c) -> Pair a b -> c = fun f p -> f (fst p) (snd p)
+val uncurry : (a -> b -> c) -> (a, b) -> c = fun f p -> f (fst p) (snd p)
 
 class Eq a {
   val eq : a -> a -> Bool = fun x y -> not (ne x y)
@@ -71,7 +63,9 @@ instance Eq (Maybe a) where Eq a
 instance Eq (Either a b) where (Eq a, Eq b)
 instance Eq Ordering
 instance Eq Char
-instance Eq (Pair a b) where (Eq a, Eq b)
+instance Eq ()
+instance Eq (a, b) where (Eq a, Eq b)
+instance Eq (a, b, c) where (Eq a, Eq b, Eq c)
 instance Eq Int
 instance Eq Word
 instance Eq Integer
@@ -94,7 +88,9 @@ instance Ord (Maybe a) where Ord a
 instance Ord (Either a b) where (Ord a, Ord b)
 instance Ord Ordering
 instance Ord Char
-instance Ord (Pair a b) where (Ord a, Ord b)
+instance Ord ()
+instance Ord (a, b) where (Ord a, Ord b)
+instance Ord (a, b, c) where (Ord a, Ord b, Ord c)
 instance Ord Int
 instance Ord Word
 instance Ord Integer
@@ -145,7 +141,9 @@ class Monoid a where Semigroup a {
 instance Semigroup (Maybe a) where Semigroup a
 instance Semigroup (Either a b) where (Semigroup a, Semigroup b)
 instance Semigroup Ordering
-instance Semigroup (Pair a b) where (Semigroup a, Semigroup b)
+instance Semigroup ()
+instance Semigroup (a, b) where (Semigroup a, Semigroup b)
+instance Semigroup (a, b, c) where (Semigroup a, Semigroup b, Semigroup c)
 instance Semigroup (List a)
 
 class Functor f {
@@ -154,7 +152,7 @@ class Functor f {
 
 instance Functor Maybe
 instance Functor (Either a)
-instance Functor (Pair a)
+// instance Functor (a, )
 instance Functor List
 
 class Applicative f where Functor f {
@@ -164,7 +162,7 @@ class Applicative f where Functor f {
 
 instance Applicative Maybe
 instance Applicative (Either e)
-instance Applicative (Pair a) where Monoid a
+// instance Applicative (a, ) where Monoid a
 instance Applicative List
 
 class Monad m where Applicative m {
@@ -175,7 +173,7 @@ class Monad m where Applicative m {
 
 instance Monad Maybe
 instance Monad (Either e)
-instance Monad (Pair a) where Monoid a
+// instance Monad (a, ) where Monoid a
 instance Monad List
 
 class Foldable t {
@@ -191,7 +189,7 @@ class Foldable t {
 
 instance Foldable Maybe
 instance Foldable (Either a)
-instance Foldable (Pair a)
+// instance Foldable (a, )
 instance Foldable List
 
 class Traversable t where (Functor t, Foldable t) {
@@ -201,7 +199,7 @@ class Traversable t where (Functor t, Foldable t) {
 
 instance Traversable Maybe
 instance Traversable (Either a)
-instance Traversable (Pair a)
+// instance Traversable (a, )
 instance Traversable List
 
 val id : a -> a = fun x -> x
@@ -261,28 +259,28 @@ val take : Int -> List a -> List a
 
 val drop : Int -> List a -> List a
 
-val splitAt : Int -> List a -> Pair (List a) (List a)
+val splitAt : Int -> List a -> (List a, List a)
 
 val takeWhile : (a -> Bool) -> List a -> List a
 
 val dropWhile : (a -> Bool) -> List a -> List a
 
-val span : (a -> Bool) -> List a -> Pair (List a) (List a)
+val span : (a -> Bool) -> List a -> (List a, List a)
 
-val break : (a -> Bool) -> List a -> Pair (List a) (List a)
+val break : (a -> Bool) -> List a -> (List a, List a)
 
-val lookup : a -> List (Pair a b) -> Maybe b where Eq a = fun
+val lookup : a -> List (a, b) -> Maybe b where Eq a = fun
   | _ Nil -> Nothing
-  | key (Cons (Pair x y) xys) -> if (eq key x) (Just y) (lookup key xys)
+  | key (Cons kv xys) -> if (eq key kv.0) (Just kv.1) (lookup key xys)
 
-val zip : List a -> List b -> List (Pair a b) = zipWith Pair
+val zip : List a -> List b -> List (a, b) = zipWith (fun a b -> (a, b))
 
 val zipWith : (a -> b -> c) -> List a -> List b -> List c = fun
   | f (Cons a as) (Cons b bs) -> Cons (f a b) (zipWith f as bs)
   | _ _ _ -> Nil
 
-val unzip : List (Pair a b) -> Pair (List a) (List b) =
-  foldr (fun (Pair a b) (Pair as bs) -> Pair (Cons a as) (Cons b bs)) (Pair Nil Nil)
+val unzip : List (a, b) -> (List a, List b) =
+  foldr (fun ab abs -> (Cons ab.0 abs.0, Cons ab.1 abs.1)) (Nil, Nil)
 
 class Show a {
   val show : a -> List Char
@@ -293,8 +291,9 @@ instance Show (Maybe a) where Show a
 instance Show (Either a b) where (Show a, Show b)
 instance Show Ordering
 instance Show Char
-instance Show Unit
-instance Show (Pair a b) where (Show a, Show b)
+instance Show ()
+instance Show (a, b) where (Show a, Show b)
+instance Show (a, b, c) where (Show a, Show b, Show c)
 instance Show Int
 instance Show Word
 instance Show Integer

@@ -139,7 +139,7 @@ class Ord a where Eq a {
 
 class MonadState s m | m ~> s where Monad m {
   val get : m s
-  val put : s -> m Unit
+  val put : s -> m ()
 }
 
 // instance

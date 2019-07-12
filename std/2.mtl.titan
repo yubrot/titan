@@ -1,9 +1,9 @@
 class MonadState s m | m ~> s where Monad m {
   val get : m s
-  val put : s -> m Unit
+  val put : s -> m {}
 }
 
-val modify : (s -> s) -> m Unit where MonadState s m = fun f ->
+val modify : (s -> s) -> m {} where MonadState s m = fun f ->
   bind get (fun s -> put (f s))
 
 val gets : (s -> a) -> m a where MonadState s m = fun f ->
@@ -18,14 +18,14 @@ val asks : (r -> a) -> m a where MonadReader r m = fun f ->
   bind ask (fun r -> return (f r))
 
 class MonadWriter w m | m ~> w where (Monoid w, Monad m) {
-  val tell : w -> m Unit
+  val tell : w -> m {}
 }
 
 data StateT s m a {
-  con StateT (s -> m (Pair a s))
+  con StateT (s -> m (a, s))
 }
 
-val runStateT : StateT s m a -> s -> m (Pair a s) where Monad m = fun (StateT f) -> f
+val runStateT : StateT s m a -> s -> m (a, s) where Monad m = fun (StateT f) -> f
 val evalStateT : StateT s m a -> s -> m a where Monad m = fun f s -> fmap fst (runStateT f s)
 val execStateT : StateT s m a -> s -> m s where Monad m = fun f s -> fmap snd (runStateT f s)
 
@@ -36,10 +36,10 @@ data ReaderT r m a {
 val runReaderT : ReaderT r m a -> r -> m a where Monad m = fun (ReaderT f) -> f
 
 data WriterT w m a {
-  con WriterT (m (Pair a w))
+  con WriterT (m (a, w))
 }
 
-val runWriterT : WriterT w m a -> m (Pair a w) where Monad m = fun (WriterT m) -> m
+val runWriterT : WriterT w m a -> m (a, w) where Monad m = fun (WriterT m) -> m
 val execWriterT : WriterT w m a -> m w where Monad m = fun f -> fmap snd (runWriterT f)
 
 instance Functor (StateT s m) where Functor m
