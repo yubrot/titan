@@ -88,14 +88,6 @@ data Kind
   | KFun Kind Kind
   deriving (Eq, Ord, Show, Data, Typeable)
 
-instance Fun Kind where
-  fun = prism apply unapply
-   where
-    apply = uncurry KFun
-    unapply = \case
-      KFun a b -> Right (a, b)
-      k -> Left k
-
 newtype Level = Level
   { _value :: Int
   }
@@ -116,37 +108,6 @@ data Type
   | TGen (Id Parameter)
   deriving (Eq, Ord, Show, Data, Typeable)
 
-instance Fun Type where
-  fun = prism apply unapply
-   where
-    apply (a, b) = TCon TypeConArrow :@@ a :@@ b
-    unapply = \case
-      TCon TypeConArrow :@@ a :@@ b -> Right (a, b)
-      t -> Left t
-
-instance App Type where
-  app = prism apply unapply
-   where
-    apply = uncurry TApp
-    unapply = \case
-      TApp a b -> Right (a, b)
-      t -> Left t
-
-instance RecordCreate Type where
-  recordCreate = prism rapply runapply . prism apply unapply
-   where
-    rapply = TRecord
-    runapply = \case
-      TRecord a -> Right a
-      t -> Left t
-    apply = foldr (\(l, a) r -> TRowExtend l a r) (TCon TypeConEmptyRow)
-    unapply = \case
-      TRowExtend l a (unapply -> Right fields) -> Right ((l, a) : fields)
-      TCon TypeConEmptyRow -> Right []
-      t -> Left t
-
-instance TupleCreate Type where
-
 -- FIXME: Do not depend on well-known types lexically.
 
 pattern TChar :: Type
@@ -157,7 +118,7 @@ pattern TListCon = TCon (TypeConData (Id "List"))
 
 -- { a }
 pattern TRecord :: Type -> Type
-pattern TRecord a = TCon TypeConRecord :@@ a
+pattern TRecord a = TApp (TCon TypeConRecord) a
 
 -- <>
 pattern TEmptyRow :: Type
@@ -165,7 +126,7 @@ pattern TEmptyRow = TCon TypeConEmptyRow
 
 -- <l : a | r>
 pattern TRowExtend :: Label -> Type -> Type -> Type
-pattern TRowExtend l a r = TCon (TypeConRowExtend l) :@@ a :@@ r
+pattern TRowExtend l a r = TApp (TApp (TCon (TypeConRowExtend l)) a) r
 
 data TypeCon
   = TypeConData (Id DataTypeCon)
@@ -234,33 +195,6 @@ data Expr
   | ELam (NonEmpty Alt)
   deriving (Eq, Ord, Show, Data, Typeable)
 
-instance App Expr where
-  app = prism apply unapply
-   where
-    apply = uncurry EApp
-    unapply = \case
-      EApp a b -> Right (a, b)
-      e -> Left e
-
-instance RecordCreate Expr where
-  recordCreate = prism apply unapply
-   where
-    apply = foldr (\(l, a) r -> ECon (ValueConRecordExtend l) :@@ a :@@ r) (ECon ValueConEmptyRecord)
-    unapply = \case
-      ECon (ValueConRecordExtend l) :@@ a :@@ RecordCreate fields -> Right ((l, a) : fields)
-      ECon ValueConEmptyRecord -> Right []
-      t -> Left t
-
-instance RecordUpdate Expr where
-  recordUpdate = prism apply unapply
-   where
-    apply (fields, r) = foldr (\(l, a) r -> ECon (ValueConRecordUpdate l) :@@ a :@@ r) r fields
-    unapply = \case
-      ECon (ValueConRecordUpdate l) :@@ a :@@ RecordUpdate fields r -> Right ((l, a) : fields, r)
-      t -> Right ([], t)
-
-instance TupleCreate Expr where
-
 pattern ELet1 :: LocalDef -> Expr -> Expr
 pattern ELet1 d e = ELet (d :| []) e
 
@@ -269,7 +203,7 @@ pattern ELam1 a = ELam (a :| [])
 
 -- r.l
 pattern ERecordSelect :: Label -> Expr -> Expr
-pattern ERecordSelect l r = ECon (ValueConRecordSelect l) :@@ r
+pattern ERecordSelect l r = EApp (ECon (ValueConRecordSelect l)) r
 
 data LocalDef = LocalDef
   { _ident :: Id LocalDef
@@ -385,6 +319,10 @@ makeFieldsNoPrefix ''ClassMethod
 makeFieldsNoPrefix ''Instance
 makeFieldsNoPrefix ''Default
 makeFieldsNoPrefix ''Program
+makePrisms ''Kind
+makePrisms ''Type
+makePrisms ''Pattern
+makePrisms ''Expr
 
 instance Applicative Typing where
   pure = Typed Explicit
@@ -420,6 +358,57 @@ instance Plated Kind
 instance Plated Type
 instance Plated Pattern
 instance Plated Expr
+
+instance Fun Kind where
+  fun = _KFun
+
+instance Fun Type where
+  fun = prism apply unapply
+   where
+    apply (a, b) = TCon TypeConArrow :@@ a :@@ b
+    unapply = \case
+      TCon TypeConArrow :@@ a :@@ b -> Right (a, b)
+      t -> Left t
+
+instance App Type where
+  app = _TApp
+
+instance RecordCreate Type where
+  recordCreate = prism rapply runapply . prism apply unapply
+   where
+    rapply = TRecord
+    runapply = \case
+      TRecord a -> Right a
+      t -> Left t
+    apply = foldr (\(l, a) r -> TRowExtend l a r) (TCon TypeConEmptyRow)
+    unapply = \case
+      TRowExtend l a (unapply -> Right fields) -> Right ((l, a) : fields)
+      TCon TypeConEmptyRow -> Right []
+      t -> Left t
+
+instance TupleCreate Type where
+
+instance App Expr where
+  app = _EApp
+
+instance RecordCreate Expr where
+  recordCreate = prism apply unapply
+   where
+    apply = foldr (\(l, a) r -> ECon (ValueConRecordExtend l) :@@ a :@@ r) (ECon ValueConEmptyRecord)
+    unapply = \case
+      ECon (ValueConRecordExtend l) :@@ a :@@ RecordCreate fields -> Right ((l, a) : fields)
+      ECon ValueConEmptyRecord -> Right []
+      t -> Left t
+
+instance RecordUpdate Expr where
+  recordUpdate = prism apply unapply
+   where
+    apply (fields, r) = foldr (\(l, a) r -> ECon (ValueConRecordUpdate l) :@@ a :@@ r) r fields
+    unapply = \case
+      ECon (ValueConRecordUpdate l) :@@ a :@@ RecordUpdate fields r -> Right ((l, a) : fields, r)
+      t -> Right ([], t)
+
+instance TupleCreate Expr where
 
 class Identified a where
   identity :: a -> Id a
