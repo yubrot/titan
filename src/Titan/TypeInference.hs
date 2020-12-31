@@ -119,10 +119,9 @@ verifyInstances = do
 
   forM_ (Map.assocs instances) $ \(classId, insts) -> do
     cls <- resolveUse' classId
-    forM_ insts $ \inst -> do
-      (_, inst') <- instantiate inst
-      premises <- mapM buildPremise (inst'^.context)
-      cls' <- substitute (inst'^.arguments) cls
+    forM_ insts $ \inst -> scoped (inst^?!quantification.typed) $ do
+      premises <- mapM buildPremise (inst^.context)
+      cls' <- substitute (inst^.arguments) cls
       mapM_ (verifyEntailment premises) (cls'^.superclasses)
 
 tiAll :: TI m => Global -> m Global
