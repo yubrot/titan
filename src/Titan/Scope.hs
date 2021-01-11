@@ -126,7 +126,7 @@ instance Scoped ClassMethod where
     local (global.classes.ix id'._2.ix id .~ cm) m
 
 scopedLevel :: MonadReader Scope m => m a -> m a
-scopedLevel = local (level %~ upLevel)
+scopedLevel = local (level %~ downLevel)
 
 captureScopedTypeVariables :: MonadReader Scope m => Scheme -> m Scheme
 captureScopedTypeVariables scheme = replaceScopedTypeVariables <$> view typeVariables <*> pure scheme

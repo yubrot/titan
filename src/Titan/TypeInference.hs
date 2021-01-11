@@ -231,6 +231,8 @@ tiExpl (scheme, e) = case e of
     produce (scheme^.context) $ do
       s <- use subst
       _ <- consumeDefaultedCtx $ vars topLevel $ apply s (scheme^.body)
+      -- NOTE: Since parameters do not have level, we cannot use uninstantiated scheme's body like
+      -- scoped ps $ uninstantiatedScheme^.body <: apply s (scheme^.body)
       (scheme^.body) <: apply s (scheme^.body)
       return $ Just $ apply s e
 
@@ -458,7 +460,7 @@ matchingInstances = \case
   CClass id args -> do
     insts <- resolveUse @_ @[Instance] id
     insts <- forM insts $ \inst -> do
-      (vs, inst') <- instantiate inst
+      (vs, inst') <- instantiateBottom inst
       s <- runExceptT $ match (inst'^.arguments) args
       case s of
         Right s -> return $ Just (inst, apply s vs)
@@ -524,6 +526,13 @@ instantiate :: (Parameterized a, TI m) => a -> m ([Type], a)
 instantiate a = do
   ps <- params a
   vs <- mapM (kindOf >=> newTVar) ps
+  a <- substitute vs a
+  return (vs, a)
+
+instantiateBottom :: (Parameterized a, TI m) => a -> m ([Type], a)
+instantiateBottom a = do
+  ps <- params a
+  vs <- mapM (kindOf >=> newTVarOnLevel bottomLevel) ps
   a <- substitute vs a
   return (vs, a)
 
@@ -617,7 +626,7 @@ mgu a b = mguElems emptySubst (a^..biplate) (b^..biplate)
     | otherwise -> do
         tk <- kindOf t
         when (k /= tk) $ throwError $ InternalError "KI" "Kind mismatch"
-        adjustedVars <- sequence [(,) id' <$> newTVarOnLevel lv k' | TVar id' k' lv' <- universe t, isOnLevel (upLevel lv) lv']
+        adjustedVars <- sequence [(,) id' <$> newTVarOnLevel lv k' | TVar id' k' lv' <- universe t, isUnderLevel lv lv']
         return $ Subst $ Map.fromList $ (id, t) : adjustedVars
 
 -- Compute a substitution from lhs to rhs.
@@ -636,7 +645,7 @@ match a b = matchElems emptySubst (a^..biplate) (b^..biplate)
     (TVar id k lv, t) -> do
       k' <- kindOf t
       when (k /= k') $ throwError MatchFailed
-      let adjustRequiredVars = [id' | TVar id' _ lv' <- universe t, isOnLevel (upLevel lv) lv']
+      let adjustRequiredVars = [id' | TVar id' _ lv' <- universe t, isUnderLevel lv lv']
       unless (null adjustRequiredVars) $ throwError MatchFailed
       return $ id +-> t
     (Row fa a, Row fb b) | not (null fa) && not (null fb) -> do

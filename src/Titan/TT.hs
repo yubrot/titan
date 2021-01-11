@@ -345,11 +345,17 @@ ids = do
 topLevel :: Level
 topLevel = Level 0
 
-upLevel :: Level -> Level
-upLevel = value %~ succ
+bottomLevel :: Level
+bottomLevel = Level maxBound
+
+downLevel :: Level -> Level
+downLevel = value %~ succ
 
 isOnLevel :: Level -> Level -> Bool
 isOnLevel (Level a) (Level b) = a <= b
+
+isUnderLevel :: Level -> Level -> Bool
+isUnderLevel (Level a) (Level b) = a < b
 
 downToLevel :: Level -> Level -> Level
 downToLevel (Level a) (Level b) = Level (min a b)

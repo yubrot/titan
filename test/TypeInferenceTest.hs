@@ -223,6 +223,17 @@ spec = describe "Titan.TypeInference" $ do
       ==>! \case NoMatchingInstances _ _ -> True; _ -> False
     "class F a where G a { val f : a -> a = fun x -> g x } class G a { val g : a -> a }"
       ==> "class F (a : *) where G a { val f : [] a -> a = fun x -> g x } class G (a : *) { val g : [] a -> a }"
+  it "constrained class methods" $ do
+    "class F a { val f : a -> a = fun x -> g x } class G a { val g : a -> a }"
+      ==>! \case NoMatchingInstances _ _ -> True; _ -> False
+    "class F a { val f : a -> a where G a = fun x -> g x } class G a { val g : a -> a }"
+      ==> "class F (a : *) { val f : [] a -> a where G a = fun x -> g x } class G (a : *) { val g : [] a -> a }"
+    "val x = f A data X { con A } class F a { val f : a -> a where G a } class G a instance F X"
+      ==>! \case NoMatchingInstances _ _ -> True; _ -> False
+    "val x = f A data X { con A } class F a { val f : a -> a where G a } class G a instance G X"
+      ==>! \case NoMatchingInstances _ _ -> True; _ -> False
+    "val x : [] X = f A data X { con A } class F a { val f : a -> a where G a } class G a instance F X instance G X"
+      ==> "val x : [] X = f A data X { con A } class F (a : *) { val f : [] a -> a where G a } class G (a : *) instance [] F X instance [] G X"
   it "entailment" $ do
     "val f : Int = 0 data Int class Num x instance Num Int"
       ==> "val f : [] Int = 0 data Int class Num (x : *) instance [] Num Int"
